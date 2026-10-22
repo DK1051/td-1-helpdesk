@@ -1,10 +1,14 @@
-"""Audit log and alerts: one JSON object per line, appended and never rewritten.
+"""Audit log and alerts: one JSON object per line, only ever added to.
 
 audit.jsonl records everything the service does (including refusals).
-alerts.jsonl records only the "MFA changed soon after a password reset" alerts.
-T1-S03 adds the stricter append-only checks; this session just writes the lines.
+alerts.jsonl records alerts: an MFA change soon after a password reset, or a blocked identity request.
 
-Rule: never put a secret (temporary password, code, token) in an event.
+This module can add a line (record, record_alert) and read alerts back. It has no function that
+edits, deletes or shortens the file, and every write opens the file in append mode, so a write can
+never touch earlier lines. This does not stop someone with write access to the file from editing it
+by hand: see the README ("no hash chain, by design").
+
+Rule: never put a secret (temporary password, code, token, seed) in an event.
 """
 
 import json

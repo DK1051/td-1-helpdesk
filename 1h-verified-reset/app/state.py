@@ -103,6 +103,8 @@ class TempPassword:
     issued_at: datetime
     expires_at: datetime
     rotated_at: datetime | None = None
+    # True once the same user was issued a newer temporary password: only the latest one is rotated.
+    superseded: bool = False
 
 
 class Store:
@@ -111,6 +113,8 @@ class Store:
     def __init__(self) -> None:
         self.requests: dict[str, ResetRequest] = {}
         self.temp_passwords: list[TempPassword] = []
+        # Newest one-time-code time step accepted per user; a code from that step or an older one is a replay.
+        self.last_otp_step: dict[str, int] = {}
         # Held by each step handler for its whole body (see main.py).
         self.lock = threading.Lock()
 
@@ -120,6 +124,12 @@ class Store:
 
     def get(self, request_id: str) -> ResetRequest | None:
         return self.requests.get(request_id)
+
+    def add_temp_password(self, item: TempPassword) -> None:
+        for older in self.temp_passwords:
+            if older.username == item.username:
+                older.superseded = True
+        self.temp_passwords.append(item)
 
     def recent_password_reset(self, username: str) -> ResetRequest | None:
         """The latest COMPLETED password reset for this user within the last 24 h, if any."""

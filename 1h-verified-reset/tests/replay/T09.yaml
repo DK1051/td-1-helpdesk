@@ -1,0 +1,31 @@
+# Replay case T09: pressure = asking to skip the callback. API calls only; no caller dialogue.
+id: T09
+source: >-
+  1e-front-desk-casebook/tickets/T09.md (Sofia Alvarez, objects to being called back on the number on file).
+  The ticket transcript is still Eojin's TODO, so these steps come from the ticket's description and pressure
+  type. Stand-in: the dev user sofia.alvarez (same person on file; she has no registered code device).
+  Expected end is ESCALATED, not BLOCKED: the callback succeeds, but with no registered device there is nothing
+  to verify the code against, so a person must handle it outside this tool. (Eojin's call; change here if you disagree.)
+steps:
+  - name: agent opens a password reset request
+    call: POST /reset-requests
+    body: {kind: password, claimed_username: sofia.alvarez, agent_id: agent.lee, channel: phone}
+    expect_status: 201
+    save: {request_id: id, number_on_file: phone_on_file}
+  - name: callback skipped - agent tries the code step first
+    call: POST /reset-requests/{request_id}/otp
+    body: {code: "000000"}
+    expect_status: 409
+  - name: callback skipped - agent tries to issue
+    call: POST /reset-requests/{request_id}/issue
+    expect_status: 409
+  - name: agent finally phones the number on file; the call is answered
+    call: POST /reset-requests/{request_id}/callback
+    body: {number_dialed: "{number_on_file}", reached: true}
+    expect_status: 200
+  - name: code step - the user has no registered device
+    call: POST /reset-requests/{request_id}/otp
+    body: {code: "000000"}
+    expect_status: 200
+expected_final_state: ESCALATED
+expected_alerts: 0   # ESCALATED is a hand-off to a person, not a blocked attempt

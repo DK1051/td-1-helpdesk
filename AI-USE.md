@@ -21,6 +21,10 @@ Claude (models used)
 - T1-S02 director (Opus 5.5): checked Needs, explained D1/D2 in plain words and proposed the plan; integrated, logged caveats, opened the PR.
 - T1-S02 `builder` (Sonnet 5.5): `scripts/keycloak-dev.sh`, the FastAPI service in `app/`, 46 unit tests with a fake Keycloak and 6 integration tests against a local Keycloak 26.8.1, the draft 1H README; then applied the redteam fixes.
 - T1-S02 `redteam` (Fable 5.1): mid-review (17 items, all handled). `verifier` (Opus 5.5): final check, `docs/verify/T1-S02.md`.
+- T1-S03 director (Opus 5.5): planned the gap fixes and replay end states, asked Eojin the design choices, logged caveats.
+- T1-S03 `builder` (Sonnet 5.5): closed six security gaps with tests (code replay, early rotation, missing alert, approver = agent, odd Keycloak answers, timeout), wrote the replay cases and runner, the append-only audit-log tests, the final 1H README with its sequence diagram, and `demo.sh` (run once; masked output in `DEMO.md`).
+- T1-S03 `chores` (Haiku 5.5): `1a-bot-stress-test/cases/README.md` (schema, the genuine example, test-user table; director corrected the table).
+- T1-S03 `redteam` (Fable 5.1): mid-review, 12 items plus one design choice, all handled. `verifier` (Opus 5.5): final check, `docs/verify/T1-S03.md`.
 Eojin
 - Approved the plan and the D1/D2/Rule-5 choices. Still to do: read the README state-machine list before T1-C1 (you will be asked why each step is where it is); record the credit balance.
 

@@ -175,7 +175,7 @@ def test_failed_rotation_is_retried_and_does_not_stop_other_users(client, kc):
 
 
 def test_user_without_a_phone_on_file_is_blocked(client, kc):
-    kc.add_user("no.phone", None, otp_code="123456")
+    kc.add_user("no.phone", None, device=True)
     result = create(client, user="no.phone").json()
     assert (result["state"], result["reason"]) == ("BLOCKED", "no_phone_on_file")
 

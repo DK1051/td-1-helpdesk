@@ -2,7 +2,6 @@
 
 from flows import (
     AUTH_MANAGER,
-    GOOD_CODE,
     audit_lines,
     call_back,
     create,
@@ -45,7 +44,7 @@ def test_three_wrong_codes_block_the_request(client):
     send_code(client, created["id"], "000001")
     third = send_code(client, created["id"], "000002").json()
     assert (third["state"], third["reason"]) == ("BLOCKED", "otp_failed")
-    assert send_code(client, created["id"], GOOD_CODE).status_code == 409  # too late, even with the right code
+    assert send_code(client, created["id"]).status_code == 409  # too late, even with the right code
 
 
 def test_otp_before_callback_is_409_and_audited(client):

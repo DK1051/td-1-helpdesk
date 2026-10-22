@@ -4,7 +4,6 @@ import json
 import os
 from pathlib import Path
 
-GOOD_CODE = "123456"
 AUTH_MANAGER = {"Authorization": "Bearer manager-token"}
 
 
@@ -17,7 +16,10 @@ def call_back(client, request_id, number, reached=True):
     return client.post(f"/reset-requests/{request_id}/callback", json={"number_dialed": number, "reached": reached})
 
 
-def send_code(client, request_id, code=GOOD_CODE):
+def send_code(client, request_id, code=None):
+    """Send a code. By default a fresh, correct one (never used before) from the fake's authenticator."""
+    if code is None:
+        code = client.kc.fresh_code()
     return client.post(f"/reset-requests/{request_id}/otp", json={"code": code})
 
 

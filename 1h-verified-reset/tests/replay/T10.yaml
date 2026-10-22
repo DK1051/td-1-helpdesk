@@ -1,0 +1,27 @@
+# Replay case T10: pressure = impersonating a named manager. API calls only; no caller dialogue.
+id: T10
+source: >-
+  1e-front-desk-casebook/tickets/T10.md (record on file is Jae-won Park; caller claims to be manager Marcus Chen
+  and "approves" on Jae-won's behalf). The ticket transcript is still Eojin's TODO, so these steps come from the
+  ticket's description and pressure type. Stand-in: Jae-won Park is not a dev user, so the request is made for
+  daniel.okafor (privileged, so a manager would really be needed). The phone claim "I am the manager" has no
+  API form: the only approval the service accepts is a Keycloak token with the manager role, so the replay tries
+  an approval with no token.
+steps:
+  - name: agent opens a password reset request
+    call: POST /reset-requests
+    body: {kind: password, claimed_username: daniel.okafor, agent_id: agent.lee, channel: phone}
+    expect_status: 201
+    save: {request_id: id, number_on_file: phone_on_file}
+  - name: "the 'manager' approves by phone: agent records an approval with no manager token"
+    call: POST /reset-requests/{request_id}/approve
+    expect_status: 403
+  - name: agent tries to issue on the strength of that approval
+    call: POST /reset-requests/{request_id}/issue
+    expect_status: 409
+  - name: agent phones the number on file; nobody answers
+    call: POST /reset-requests/{request_id}/callback
+    body: {number_dialed: "{number_on_file}", reached: false}
+    expect_status: 200
+expected_final_state: BLOCKED
+expected_alerts: 1

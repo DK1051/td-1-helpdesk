@@ -110,9 +110,8 @@ fi
 profile="$(api GET "$A/users/profile")"
 if [ "$(echo "$profile" | jq '[.attributes[].name] | index("phone") != null')" != "true" ]; then
   echo "$profile" | jq '.attributes += [{"name":"phone","displayName":"Phone","validations":{},
-    "permissions":{"view":["admin"],"edit":["admin"]},"multivalued":false}]' > "$DEV_DIR/.profile.json"
-  api PUT "$A/users/profile" "$(cat "$DEV_DIR/.profile.json")" > /dev/null
-  rm -f "$DEV_DIR/.profile.json"
+    "permissions":{"view":["admin"],"edit":["admin"]},"multivalued":false}]' > "$WORK/profile.json"
+  api PUT "$A/users/profile" "$(cat "$WORK/profile.json")" > /dev/null
   say "declared the phone attribute"
 fi
 
@@ -210,6 +209,7 @@ for row in "${USERS[@]}"; do
     jq --arg u "$uname" --rawfile s "$WORK/seed" '. + {($u): $s}' "$SEEDS" > "$SEEDS.tmp" && mv "$SEEDS.tmp" "$SEEDS"
   fi
 done
-chmod 600 "$DEV_DIR"/* 2>/dev/null || true
+# Only plain files: a mode-600 FOLDER (the scratch dir) could not be entered or cleaned up.
+find "$DEV_DIR" -maxdepth 1 -type f -exec chmod 600 {} +
 
 say "done: realm $REALM has $(api GET "$A/users" | jq 'length') users (secrets are in 1h-verified-reset/.dev/, not shown)"

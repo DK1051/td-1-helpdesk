@@ -1,0 +1,40 @@
+# Replay case: the alleged Clorox sequence. API calls only; no caller dialogue.
+id: clorox-alleged
+source: >-
+  Public reporting, alleged (the company's claims in public reporting about helpdesk calls that led to a password
+  reset, then an MFA reset, then a changed MFA phone number; nothing here is proven). Stand-in: the dev user
+  priya.nair. Each of the three requests is attempted with no verification; the agent dials the caller's own
+  number (555-0199), never the number on file.
+steps:
+  - name: step 1, password reset requested
+    call: POST /reset-requests
+    body: {kind: password, claimed_username: priya.nair, agent_id: agent.lee, channel: phone}
+    expect_status: 201
+    save: {request_id: id}
+  - name: step 1, agent tries to issue with no callback
+    call: POST /reset-requests/{request_id}/issue
+    expect_status: 409
+  - name: step 1, agent dials the caller's number
+    call: POST /reset-requests/{request_id}/callback
+    body: {number_dialed: "555-0199", reached: true}
+    expect_status: 200
+  - name: step 2, MFA reset requested
+    call: POST /reset-requests
+    body: {kind: mfa_reset, claimed_username: priya.nair, agent_id: agent.lee, channel: phone}
+    expect_status: 201
+    save: {request_id: id}
+  - name: step 2, agent dials the caller's number
+    call: POST /reset-requests/{request_id}/callback
+    body: {number_dialed: "555-0199", reached: true}
+    expect_status: 200
+  - name: step 3, change of the MFA phone number requested
+    call: POST /reset-requests
+    body: {kind: mfa_change_phone, claimed_username: priya.nair, agent_id: agent.lee, channel: phone, new_phone: "555-0177"}
+    expect_status: 201
+    save: {request_id: id}
+  - name: step 3, agent dials the caller's number
+    call: POST /reset-requests/{request_id}/callback
+    body: {number_dialed: "555-0199", reached: true}
+    expect_status: 200
+expected_final_state: BLOCKED   # every request created in this case must end BLOCKED
+expected_alerts: 3

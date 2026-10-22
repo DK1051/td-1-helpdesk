@@ -77,9 +77,27 @@ def require_step(req: ResetRequest, step: str, actor: str) -> None:
         raise HTTPException(409, f"{step} is not allowed while the request is {req.state.value}")
 
 
+# No real account was at risk when the user is unknown or has no number on file, so no alert (still audited).
+NO_ALERT_REASONS = {"unknown_user", "no_phone_on_file"}
+
+
 def block(req: ResetRequest, actor: str, action: str, reason: str) -> dict:
+    """End a request as BLOCKED. A stopped identity request is also an alert (once, since BLOCKED is final),
+    except the reasons in NO_ALERT_REASONS."""
     req.move_to(State.BLOCKED, action, reason)
     log(req, actor, action, "blocked", reason=reason)
+    if reason in NO_ALERT_REASONS:
+        return req.public_view()
+    raise_alert(
+        req,
+        {
+            "reason": "blocked_identity_request",
+            "username": req.username,
+            "kind": req.kind.value,
+            "blocked_because": reason,
+            "agent_id": req.agent_id,
+        },
+    )
     return req.public_view()
 
 
@@ -105,23 +123,28 @@ def keycloak_call(req: ResetRequest | None, actor: str, action: str, fn, *args, 
         raise HTTPException(502, "identity provider error") from None
 
 
+def raise_alert(req: ResetRequest | None, alert: dict) -> None:
+    """Write the alert to alerts.jsonl and note it in the audit log."""
+    alert = audit.record_alert({"request_id": req.id if req else None, **alert})
+    log(req, "system", "alert", "raised", alert=alert["reason"], username=alert["username"])
+
+
 def alert_if_after_password_reset(store: Store, username: str, change: str, source: str, request_id=None) -> bool:
     """Rule 5: an MFA change within 24 h after a completed password reset raises an alert."""
     reset = store.recent_password_reset(username)
     if reset is None:
         return False
-    alert = audit.record_alert(
+    raise_alert(
+        None if request_id is None else store.get(request_id),
         {
             "reason": "mfa_change_within_24h_of_password_reset",
             "username": username,
             "requested_change": change,
             "source": source,
-            "request_id": request_id,
             "password_reset_request_id": reset.id,
             "password_reset_completed_at": reset.completed_at.isoformat(),
-        }
+        },
     )
-    log(None, "system", "alert", "raised", username=username, requested_change=change, alert_ts=alert["ts"])
     return True
 
 
@@ -144,27 +167,30 @@ def create_request(body: CreateResetRequest, kc=Depends(get_keycloak), store: St
     if body.kind == Kind.mfa_change_phone and body.new_phone is None:
         raise HTTPException(422, "new_phone is required for mfa_change_phone")
     username = body.claimed_username.strip().lower()
+    agent_id = (
+        body.agent_id.strip().lower()
+    )  # same treatment as the username, so approver != agent cannot be dodged by spelling
     with store.lock:
-        user = keycloak_call(None, body.agent_id, "create", kc.get_user, username)
+        user = keycloak_call(None, agent_id, "create", kc.get_user, username)
         req = store.add(
             ResetRequest(
                 kind=body.kind,
                 username=username,
-                agent_id=body.agent_id,
+                agent_id=agent_id,
                 channel=body.channel,
                 new_phone=body.new_phone,
             )
         )
         if user is None:
-            return block(req, body.agent_id, "create", "unknown_user")
+            return block(req, agent_id, "create", "unknown_user")
         if not user.phone:  # without a number on file there is nobody to call back
-            return block(req, body.agent_id, "create", "no_phone_on_file")
+            return block(req, agent_id, "create", "no_phone_on_file")
 
         req.phone_on_file = user.phone
         req.is_privileged = "privileged" in user.groups
         apply_rule5(store, req)
         req.move_to(State.OPEN, "create")
-        log(req, body.agent_id, "create", "ok", kind=body.kind.value, needs_approval=req.needs_approval)
+        log(req, agent_id, "create", "ok", kind=body.kind.value, needs_approval=req.needs_approval)
         # The agent needs the number to dial; the callback itself happens outside the service.
         return {**req.public_view(), "phone_on_file": req.phone_on_file}
 
@@ -195,18 +221,26 @@ def check_otp(request_id: str, body: OtpBody, kc=Depends(get_keycloak), store: S
         req = find_request(store, request_id)
         actor = req.agent_id
         require_step(req, "otp", actor)
+        # Rule 5 first: even a request that ends ESCALATED must raise its alert if a reset completed meanwhile.
+        apply_rule5(store, req)
         if not keycloak_call(req, actor, "otp", kc.has_otp_device, req.username):
             req.move_to(State.ESCALATED, "otp", "no_registered_device")
             log(req, actor, "otp", "escalated", reason="no_registered_device")
             return req.public_view()
-        if not keycloak_call(req, actor, "otp", kc.verify_otp, req.username, body.code):
+        step = keycloak_call(req, actor, "otp", kc.verify_otp, req.username, body.code)
+        problem = None
+        if step is None:
+            problem = "wrong_code"
+        elif step <= store.last_otp_step.get(req.username, -1):
+            problem = "otp_reused"  # a correct code, but one already used: replay
+        if problem:
             req.otp_failures += 1
             if req.otp_failures >= MAX_OTP_ATTEMPTS:
                 return block(req, actor, "otp", "otp_failed")
-            log(req, actor, "otp", "wrong_code", attempts_left=MAX_OTP_ATTEMPTS - req.otp_failures)
+            log(req, actor, "otp", "wrong_code", reason=problem, attempts_left=MAX_OTP_ATTEMPTS - req.otp_failures)
             return req.public_view()  # state unchanged: the agent may try again
+        store.last_otp_step[req.username] = step  # this code (and any older one) can never be used again
         req.move_to(State.OTP_VERIFIED, "otp")
-        apply_rule5(store, req)  # a password reset may have completed since this request was opened
         if req.needs_approval:
             req.move_to(State.AWAITING_APPROVAL, "otp", "privileged" if req.is_privileged else "forced_approval")
         else:
@@ -235,6 +269,9 @@ def approve(
         if who.username.lower() == req.username:
             log(req, who.username, "approve", "refused", reason="self_approval")
             raise HTTPException(403, "nobody can approve their own request")
+        if who.username.lower() == req.agent_id.lower():  # the person running the request cannot approve it
+            log(req, who.username, "approve", "refused", reason="approver_is_agent")
+            raise HTTPException(403, "the agent running the request cannot approve it")
         require_step(req, "approve", who.username)
         req.approver = who.username
         req.move_to(State.APPROVED, "approve")
@@ -248,11 +285,12 @@ def issue(request_id: str, kc=Depends(get_keycloak), store: Store = Depends(get_
         req = find_request(store, request_id)
         actor = req.agent_id
         require_step(req, "issue", actor)
-        if req.approver is None and apply_rule5(store, req):
+        if apply_rule5(store, req) and req.approver is None:
             # Approved without a manager, but a password reset completed in the meantime.
             req.move_to(State.AWAITING_APPROVAL, "issue", "needs_approval_rule5")
             log(req, actor, "issue", "refused", reason="needs_approval_rule5")
             raise HTTPException(409, "a password reset completed recently: a manager must approve first")
+        # (If a manager had already approved, apply_rule5 still wrote its alert; no 409 is needed.)
         result: dict = {}
 
         if req.kind == Kind.password:
@@ -260,7 +298,7 @@ def issue(request_id: str, kc=Depends(get_keycloak), store: Store = Depends(get_
             keycloak_call(req, actor, "issue", kc.set_password, req.username, password, True)
             now = clock.now()
             expires_at = now + TEMP_PASSWORD_LIFETIME
-            store.temp_passwords.append(TempPassword(req.id, req.username, now, expires_at))
+            store.add_temp_password(TempPassword(req.id, req.username, now, expires_at))
             # The only place the password is ever returned. It is not stored or logged.
             result = {"temporary_password": password, "expires_at": expires_at.isoformat()}
             details = {"temporary_password_issued": True, "expires_at": expires_at.isoformat()}
@@ -302,19 +340,21 @@ def expire_temp_passwords(kc=Depends(get_keycloak), store: Store = Depends(get_s
     failed = 0
     with store.lock:
         for item in store.temp_passwords:
-            if item.rotated_at is not None or clock.now() < item.expires_at:
-                continue
+            if item.rotated_at is not None or item.superseded or clock.now() < item.expires_at:
+                continue  # (an older password of a user who got a newer one is never rotated)
             try:
                 user = keycloak_call(None, "system", "expire", kc.get_user, item.username)
                 if user is None or "UPDATE_PASSWORD" not in user.required_actions:
-                    # The user already chose their own password; rotating would lock them out.
+                    # Nothing to rotate: the account is gone, or the user already chose their own
+                    # password (rotating that one would lock them out).
+                    skip_reason = "user_not_found" if user is None else "already_changed"
                     log(
                         None,
                         "system",
                         "temp_password_expiry",
                         "skipped",
                         request_id=item.request_id,
-                        reason="already_changed",
+                        reason=skip_reason,
                     )
                 else:
                     keycloak_call(None, "system", "expire", kc.set_password, item.username, random_password(), True)

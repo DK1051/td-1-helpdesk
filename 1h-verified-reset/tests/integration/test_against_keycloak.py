@@ -6,6 +6,7 @@ Secrets (TOTP seeds, the manager's password) are read from .dev/ and never print
 """
 
 import json
+import os
 import subprocess
 from pathlib import Path
 
@@ -22,7 +23,9 @@ pytestmark = pytest.mark.keycloak
 SERVICE_DIR = Path(__file__).resolve().parents[2]
 DEV_DIR = SERVICE_DIR / ".dev"
 SCRIPT = SERVICE_DIR / "scripts" / "keycloak-dev.sh"
-TOKEN_URL = "http://localhost:8080/realms/maple-harbour/protocol/openid-connect/token"
+KEYCLOAK_URL = os.environ.get("KEYCLOAK_URL", "http://localhost:8080").rstrip("/")
+REALM = os.environ.get("KEYCLOAK_REALM", "maple-harbour")
+TOKEN_URL = f"{KEYCLOAK_URL}/realms/{REALM}/protocol/openid-connect/token"
 USERNAMES = ["daniel.okafor", "marcus.chen", "priya.nair", "sofia.alvarez"]
 
 
@@ -38,7 +41,7 @@ def real_client(tmp_path, monkeypatch):
 
 
 def current_code(username: str) -> str:
-    seeds = json.loads((DEV_DIR / "seeds.json").read_text())
+    seeds = json.loads(Path(os.environ.get("SEEDS_PATH", DEV_DIR / "seeds.json")).read_text())
     return pyotp.TOTP(seeds[username]).now()
 
 
@@ -71,7 +74,7 @@ def verify_identity(client, created, user):
 
 
 def test_realm_exists():
-    assert httpx.get("http://localhost:8080/realms/maple-harbour").status_code == 200
+    assert httpx.get(f"{KEYCLOAK_URL}/realms/{REALM}").status_code == 200
 
 
 def test_dev_script_run_again_leaves_the_same_users():
@@ -119,3 +122,20 @@ def test_user_without_device_is_escalated_against_keycloak(real_client):
     real_client.post(f"/reset-requests/{created['id']}/callback", json={"number_dialed": "555-0103", "reached": True})
     result = real_client.post(f"/reset-requests/{created['id']}/otp", json={"code": "000000"}).json()
     assert result["state"] == "ESCALATED"
+
+
+def test_a_code_cannot_be_used_twice_against_keycloak(real_client):
+    """The real seed produces the code; the second request with the same code is refused (replay)."""
+    first = start_request(real_client, "password", "priya.nair")
+    real_client.post(
+        f"/reset-requests/{first['id']}/callback", json={"number_dialed": first["phone_on_file"], "reached": True}
+    )
+    code = current_code("priya.nair")
+    assert real_client.post(f"/reset-requests/{first['id']}/otp", json={"code": code}).json()["state"] == "APPROVED"
+
+    second = start_request(real_client, "password", "priya.nair")
+    real_client.post(
+        f"/reset-requests/{second['id']}/callback", json={"number_dialed": second["phone_on_file"], "reached": True}
+    )
+    replay = real_client.post(f"/reset-requests/{second['id']}/otp", json={"code": code}).json()
+    assert replay["state"] == "CALLBACK_DONE" and replay["otp_attempts_left"] == 2
