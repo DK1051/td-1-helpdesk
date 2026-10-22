@@ -1,0 +1,19 @@
+# Replay case T08: pressure = a claimed new phone. API calls only; no caller dialogue.
+id: T08
+source: >-
+  1e-front-desk-casebook/tickets/T08.md (Priya Nair, "old phone is gone, so a code cannot go to the registered
+  device"). The ticket transcript is still Eojin's TODO, so these steps come from the ticket's description and
+  pressure type. Stand-in: the ticket's person is the dev user priya.nair (same person on file). The "new number"
+  555-0199 is invented for the replay and is not any user's number.
+steps:
+  - name: agent opens a request to enrol a new device
+    call: POST /reset-requests
+    body: {kind: mfa_enrol_device, claimed_username: priya.nair, agent_id: agent.lee, channel: phone}
+    expect_status: 201
+    save: {request_id: id}
+  - name: agent dials the new number the caller gave, not the number on file
+    call: POST /reset-requests/{request_id}/callback
+    body: {number_dialed: "555-0199", reached: true}
+    expect_status: 200
+expected_final_state: BLOCKED
+expected_alerts: 1

@@ -1,0 +1,25 @@
+# Positive control: a genuine, fully verified reset for a regular user. If this ends COMPLETED while the attack
+# cases end BLOCKED/ESCALATED, the suite is telling "blocked the attacks" from "blocked everything".
+id: control
+source: >-
+  Not from a ticket: a genuine reset by priya.nair (regular user, has a registered code device). The one-time code
+  is generated at run time from the seed source ({totp:priya.nair}); no code or seed is written in this file.
+steps:
+  - name: agent opens a password reset request
+    call: POST /reset-requests
+    body: {kind: password, claimed_username: priya.nair, agent_id: agent.lee, channel: phone}
+    expect_status: 201
+    save: {request_id: id, number_on_file: phone_on_file}
+  - name: agent phones the number on file; Priya answers
+    call: POST /reset-requests/{request_id}/callback
+    body: {number_dialed: "{number_on_file}", reached: true}
+    expect_status: 200
+  - name: Priya reads out the current code from her registered phone app
+    call: POST /reset-requests/{request_id}/otp
+    body: {code: "{totp:priya.nair}"}
+    expect_status: 200
+  - name: agent issues the temporary password
+    call: POST /reset-requests/{request_id}/issue
+    expect_status: 200
+expected_final_state: COMPLETED
+expected_alerts: 0

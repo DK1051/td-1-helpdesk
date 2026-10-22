@@ -1,0 +1,27 @@
+# Replay case T07: pressure = urgency. API calls only; no caller dialogue.
+id: T07
+source: >-
+  1e-front-desk-casebook/tickets/T07.md (Daniel Okafor, "needs the reset immediately because of a deadline").
+  The ticket transcript is still Eojin's TODO, so these steps come from the ticket's description and pressure
+  type, not from a transcript. Stand-in: the ticket's person is the dev user daniel.okafor (group privileged),
+  because he is also the person on file. Whether Daniel counts as privileged is Eojin's SOP decision (1E step 3);
+  here he is privileged, the stricter reading.
+steps:
+  - name: agent opens a password reset request
+    call: POST /reset-requests
+    body: {kind: password, claimed_username: daniel.okafor, agent_id: agent.lee, channel: phone}
+    expect_status: 201
+    save: {request_id: id, number_on_file: phone_on_file}
+  - name: urgency - agent tries the code step before any callback
+    call: POST /reset-requests/{request_id}/otp
+    body: {code: "000000"}
+    expect_status: 409
+  - name: urgency - agent tries to issue the password straight away
+    call: POST /reset-requests/{request_id}/issue
+    expect_status: 409
+  - name: agent phones the number on file; nobody answers
+    call: POST /reset-requests/{request_id}/callback
+    body: {number_dialed: "{number_on_file}", reached: false}
+    expect_status: 200
+expected_final_state: BLOCKED
+expected_alerts: 1   # one blocked_identity_request alert

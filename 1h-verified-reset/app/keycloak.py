@@ -12,11 +12,14 @@ we check codes with pyotp. A real deployment must never hold seeds outside the
 identity provider.
 """
 
+import hmac
 import json
 import os
 import re
 import time
+from contextlib import contextmanager
 from dataclasses import dataclass, field
+from datetime import UTC, datetime
 from pathlib import Path
 
 import httpx
@@ -28,6 +31,16 @@ ID_PATTERN = re.compile(r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-
 
 class KeycloakError(Exception):
     """A Keycloak call failed. Message is a status code or short label only."""
+
+
+@contextmanager
+def expect_shape():
+    """Keycloak answered, but not in the shape we rely on (a missing id, name, ...).
+    That becomes a clean KeycloakError (fails closed) instead of a KeyError and an HTTP 500."""
+    try:
+        yield
+    except (KeyError, IndexError, TypeError, AttributeError):
+        raise KeycloakError("bad_response") from None
 
 
 @dataclass
@@ -52,7 +65,7 @@ class KeycloakClient:
         self.client_id = os.environ.get("KEYCLOAK_CLIENT_ID", "reset-service")
         self.seeds_path = Path(os.environ.get("SEEDS_PATH", DEV_DIR / "seeds.json"))
         self._secret_path = Path(os.environ.get("CLIENT_SECRET_PATH", DEV_DIR / "reset-service.secret"))
-        self._http = httpx.Client(timeout=10)
+        self._http = httpx.Client(timeout=5)  # one slow call holds the service lock, so keep it short
         self._admin_token: str | None = None
         self._admin_token_expires = 0.0
 
@@ -113,7 +126,13 @@ class KeycloakClient:
 
     def _raw_user(self, username: str) -> dict | None:
         found = self._json(self._admin("GET", "/users", params={"username": username, "exact": "true"}))
-        return found[0] if found else None
+        with expect_shape():
+            if not found:
+                return None
+            user = found[0]
+            if not isinstance(user, dict) or not user["id"] or not user["username"]:
+                raise KeycloakError("bad_response")
+            return user
 
     def _require_user(self, username: str) -> dict:
         user = self._raw_user(username)
@@ -127,14 +146,15 @@ class KeycloakClient:
         if raw is None:
             return None
         groups = self._json(self._admin("GET", f"/users/{raw['id']}/groups"))
-        phones = (raw.get("attributes") or {}).get("phone") or [None]
-        return UserInfo(
-            id=raw["id"],
-            username=raw["username"],
-            phone=phones[0],
-            groups=[g["name"] for g in groups],
-            required_actions=raw.get("requiredActions") or [],
-        )
+        with expect_shape():
+            phones = (raw.get("attributes") or {}).get("phone") or [None]
+            return UserInfo(
+                id=raw["id"],
+                username=raw["username"],
+                phone=phones[0],
+                groups=[g["name"] for g in groups],
+                required_actions=list(raw.get("requiredActions") or []),
+            )
 
     def introspect(self, token: str) -> TokenInfo | None:
         """Ask Keycloak whether a login token is still valid and whose it is (D2a).
@@ -152,16 +172,17 @@ class KeycloakClient:
         if resp.status_code != 200:
             raise KeycloakError(f"introspect_{resp.status_code}")
         body = self._json(resp)
-        if not isinstance(body, dict) or not body.get("active"):
-            return None
-        audience = body.get("aud")
-        audiences = [audience] if isinstance(audience, str) else (audience or [])
-        if self.client_id not in audiences or body.get("typ") != "Bearer":
-            return None
-        username = body.get("preferred_username") or body.get("username")
-        if not username:
-            return None
-        return TokenInfo(username=username, realm_roles=(body.get("realm_access") or {}).get("roles", []))
+        with expect_shape():
+            if not isinstance(body, dict) or not body.get("active"):
+                return None
+            audience = body.get("aud")
+            audiences = [audience] if isinstance(audience, str) else (audience or [])
+            if self.client_id not in audiences or body.get("typ") != "Bearer":
+                return None
+            username = body.get("preferred_username") or body.get("username")
+            if not username:
+                return None
+            return TokenInfo(username=username, realm_roles=list((body.get("realm_access") or {}).get("roles", [])))
 
     # ---- one-time codes (D1, dev copy of seeds) ----------------------------
     def _seeds(self) -> dict[str, str]:
@@ -173,11 +194,22 @@ class KeycloakClient:
     def has_otp_device(self, username: str) -> bool:
         return username in self._seeds()
 
-    def verify_otp(self, username: str, code: str) -> bool:
+    def verify_otp(self, username: str, code: str) -> int | None:
+        """Return the 30-second time step the code belongs to, or None if the code is wrong.
+
+        We accept the current step and one step either side (clock drift). Returning the step
+        lets the service refuse a code it has already accepted (replay).
+        """
         seed = self._seeds().get(username)
-        if seed is None or not code.isdigit():
-            return False
-        return pyotp.TOTP(seed).verify(code, valid_window=1)  # allows one 30-second step of clock drift
+        if seed is None or not (code.isascii() and code.isdigit()):
+            return None
+        totp = pyotp.TOTP(seed)
+        current = totp.timecode(datetime.now(UTC))
+        matched = None
+        for step in (current - 1, current, current + 1):  # check all three: no early exit
+            if hmac.compare_digest(totp.generate_otp(step), code):  # constant-time comparison
+                matched = step
+        return matched
 
     # ---- changes ------------------------------------------------------------
     def set_password(self, username: str, password: str, temporary: bool) -> None:
@@ -191,9 +223,11 @@ class KeycloakClient:
     def remove_otp_device(self, username: str) -> None:
         """Delete the user's OTP credentials in Keycloak and the dev seed copy."""
         user = self._require_user(username)
-        for cred in self._json(self._admin("GET", f"/users/{user['id']}/credentials")):
-            if cred.get("type") == "otp":
-                self._admin("DELETE", f"/users/{user['id']}/credentials/{cred['id']}")
+        credentials = self._json(self._admin("GET", f"/users/{user['id']}/credentials"))
+        with expect_shape():
+            otp_ids = [cred["id"] for cred in credentials if cred.get("type") == "otp"]
+        for cred_id in otp_ids:
+            self._admin("DELETE", f"/users/{user['id']}/credentials/{cred_id}")
         seeds = self._seeds()
         if seeds.pop(username, None) is not None:
             try:

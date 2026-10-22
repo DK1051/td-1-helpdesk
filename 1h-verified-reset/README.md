@@ -85,6 +85,8 @@ An MFA-kind request (`mfa_reset`, `mfa_enrol_device`, `mfa_change_phone`) that i
 - Temporary-password rotation skips a user who has already chosen their own password (Keycloak's `UPDATE_PASSWORD` action is gone), because rotating would lock them out.
 - A rule-5 alert is written when the MFA request is created, even if the request is later blocked.
 - `mfa_enrol_device` only asks Keycloak to require TOTP setup; the new device's seed is not in the dev copy (D1), so that user has no code device the service can verify. A later request for that user ends `ESCALATED`.
+- Every request that ends `BLOCKED` also writes a `blocked_identity_request` alert (once), so a stopped takeover attempt is visible to security.
+- The person approving cannot be the agent running the request (403 `approver_is_agent`), and an odd Keycloak answer (a missing id or name) fails closed with a 502 and an audit line.
 - Concurrency: each step handler holds one lock for its whole body, so two parallel calls cannot both pass a state check or beat the three-try limit (tested with parallel wrong codes).
 
 ## Limits
@@ -94,7 +96,8 @@ An MFA-kind request (`mfa_reset`, `mfa_enrol_device`, `mfa_change_phone`) that i
 - **No endpoint authenticates the agent.** That includes `/mfa-change-events` and `/maintenance/*`. Only `approve` checks a token.
 - **Rule 5 only sees password resets completed through this service.** Resets done any other way are invisible to it.
 - **Temporary passwords:** Keycloak's "temporary" flag forces a change at next login but does not time-limit the password. The 60-minute expiry is enforced by this service, by calling the maintenance endpoint; nothing calls it on a schedule yet.
-- **Code replay:** a valid 6-digit code can be used again within its 30-second window (and `pyotp` is asked to accept one step either side). The first replay test planned for T1-S03 targets this.
+- **Code replay is refused, within limits:** the service remembers the newest code time step it accepted per user and refuses any code from that step or an older one (a replay counts as a failed try). That memory is in RAM like everything else, so a restart forgets it.
+- **One global lock, 5-second Keycloak timeout:** every step runs under one lock so parallel calls cannot beat the rules, which means one slow Keycloak call makes other requests wait. The Keycloak HTTP timeout is 5 seconds to keep that short. Per-user locks would be faster but more code to explain.
 - **Seeds outside the identity provider** (D1) would never be acceptable in production.
 - **`mfa_enrol_device`** for a user with no device ends `ESCALATED` at the code step, since there is no device to check a code against.
 - **Single node, plain HTTP, `start-dev` Keycloak:** lab settings only.

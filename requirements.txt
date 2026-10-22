@@ -8,4 +8,5 @@ httpx==0.28.1
 pyotp==2.10.0
 pytest==9.1.1
 ruff==0.17.1
-# T1-S04 adds the YAML reader for the 1A case files: pyyaml==6.0.3 (checked 2026-10-21).
+# pyyaml reads the replay case files (T1-S03) and later the 1A case files (T1-S04): pyyaml==6.0.3 (checked 2026-10-21).
+pyyaml==6.0.3

@@ -110,9 +110,8 @@ fi
 profile="$(api GET "$A/users/profile")"
 if [ "$(echo "$profile" | jq '[.attributes[].name] | index("phone") != null')" != "true" ]; then
   echo "$profile" | jq '.attributes += [{"name":"phone","displayName":"Phone","validations":{},
-    "permissions":{"view":["admin"],"edit":["admin"]},"multivalued":false}]' > "$DEV_DIR/.profile.json"
-  api PUT "$A/users/profile" "$(cat "$DEV_DIR/.profile.json")" > /dev/null
-  rm -f "$DEV_DIR/.profile.json"
+    "permissions":{"view":["admin"],"edit":["admin"]},"multivalued":false}]' > "$WORK/profile.json"
+  api PUT "$A/users/profile" "$(cat "$WORK/profile.json")" > /dev/null
   say "declared the phone attribute"
 fi
 
