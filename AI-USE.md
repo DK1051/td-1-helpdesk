@@ -10,9 +10,11 @@ Eojin
 
 ## 1E Front Desk Casebook
 Claude (models used)
-- (to be filled at wrap)
+- T1-S01 director (Opus 5.5): kit check (24 files, all found), probe, caveats, run sheet, PR.
+- T1-S01 `builder` (Sonnet 5.5): wrote the SOP outline with the quoted sources, the ticket template, break-fix tickets T01–T06 in full, the ticket shells for T07–T10 (fields and a neutral description only), the KB templates in English and Korean, and the 1E README; ran the fictional-data consistency pass and `ruff` / `pytest`.
+- T1-S01 `redteam` (Fable 5.1): mid-review. `verifier` (Opus 5.5): final check, `docs/verify/T1-S01.md`.
 Eojin
-- (to be filled at wrap)
+- To do: write the caller transcripts for T07–T10, the Decision and Reply to user for all ten tickets, three KB articles in English and Korean, review the Korean template, and record the SOP video.
 
 ## 1H Verified Reset Service
 Claude (models used)
