@@ -1,0 +1,16 @@
+# Test and lint settings for Track 1. Code lives in 1h-verified-reset/ (and later folders);
+# that folder name starts with a digit and has hyphens, so it cannot be a Python package.
+# Adding it to pythonpath lets tests write `from app import ...`.
+[tool.pytest.ini_options]
+pythonpath = ["1h-verified-reset"]
+markers = [
+    "keycloak: needs the local Keycloak dev server with realm maple-harbour (skipped when it is not running)",
+]
+
+[tool.ruff]
+target-version = "py312"
+line-length = 120
+
+[tool.ruff.lint.flake8-bugbear]
+# FastAPI's dependency pattern `x = Depends(...)` in a function signature is intended.
+extend-immutable-calls = ["fastapi.Depends", "fastapi.Header"]

@@ -17,3 +17,7 @@ secrets/
 /tmp/
 keycloak-*/
 *.tar.gz
+
+# 1H runtime logs written by the service when run from its folder
+audit.jsonl
+alerts.jsonl
