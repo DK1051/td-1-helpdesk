@@ -34,7 +34,7 @@ There is nothing to run: it is a set of documents. Read the SOP first, then open
 - Write the caller transcripts (caller lines and agent lines) in T07–T10. Claude does not write attack scripts; keep them at the level of public reporting.
 - Write three knowledge-base articles, each in English and Korean, in `kb/en/` and `kb/ko/`.
 - Finish the SOP: answer each `<!-- Eojin: -->` question and re-check the quoted sources.
-- Record a 3-minute video walking through the SOP on one of the T07–T10 calls and link it here: `TODO: video link`.
+- Record a 3-minute video walking through the SOP on one of the T07–T10 calls and link it here: <!-- Eojin: add the video link here -->.
 - Review the Korean template wording; the template was written by Claude and Eojin is the bilingual one.
 
 ## What Eojin did vs what Claude did

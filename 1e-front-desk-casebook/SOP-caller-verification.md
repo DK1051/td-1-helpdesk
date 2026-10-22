@@ -23,7 +23,7 @@ This procedure applies to any request that changes how a person proves who they 
 
 Do not skip a step, and do not reorder them. If the caller pushes to skip one, that is itself a red flag (see below).
 
-1. **Call back the phone number already on file.** End the call, then dial the number stored in the staff record. Never use a number the caller gives you, and never call back a number shown on caller ID.
+1. **Call back the phone number already on file.** End the call, then dial the number stored in the staff record. Never use a number the caller gives you, and never call back a number shown on caller ID (caller ID can be faked).
    <!-- Eojin: what do you do if the number on file is the lost phone itself? -->
 2. **Send a one-time code to the registered device.** The caller must read the code back. A one-time code is a short number that works once and expires quickly.
    <!-- Eojin: what if the registered device is the one that was lost? Decide the fallback. -->
@@ -41,9 +41,9 @@ Do not skip a step, and do not reorder them. If the caller pushes to skip one, t
 
 <!-- Eojin: write the exact wording the technician says to the caller when refusing politely. -->
 
-## Red flags seen in public reporting
+## Red flags (the four named in the session brief; TODO(verify): cite the public report that describes each)
 
-These behaviours are described in public reporting on helpdesk social engineering (see Sources). None of them proves an attack; each means "slow down and follow the steps".
+These are common pressure tactics in helpdesk social engineering. None of them proves an attack; each means "slow down and follow the steps".
 
 - **Urgency:** "I have to present in ten minutes", "the whole team is waiting".
 - **A "new phone":** the old phone is lost, broken or "being replaced", so the code cannot go to the registered device.
@@ -60,7 +60,7 @@ For every request, record: ticket ID, date and time, the staff record the reques
 
 ## Sources
 
-Quoted exactly. Retrieved for this draft; Eojin to re-check each passage against the live page.
+Quoted exactly. The passages were copied from the session brief, not fetched live; Eojin to re-check each passage against the live page.
 
 - Canadian Centre for Cyber Security, alert AL26-010 (May 1, 2026): https://www.cyber.gc.ca/en/alerts-advisories/al26-010-cyber-criminals-social-engineering-enabled-compromise-enterprise-saas-environments
   - Attackers "convince support staff to reset MFA or enroll attacker-controlled devices".
