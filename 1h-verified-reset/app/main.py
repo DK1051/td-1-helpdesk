@@ -77,10 +77,17 @@ def require_step(req: ResetRequest, step: str, actor: str) -> None:
         raise HTTPException(409, f"{step} is not allowed while the request is {req.state.value}")
 
 
+# No real account was at risk when the user is unknown or has no number on file, so no alert (still audited).
+NO_ALERT_REASONS = {"unknown_user", "no_phone_on_file"}
+
+
 def block(req: ResetRequest, actor: str, action: str, reason: str) -> dict:
-    """End a request as BLOCKED. A stopped identity request is also an alert (once, since BLOCKED is final)."""
+    """End a request as BLOCKED. A stopped identity request is also an alert (once, since BLOCKED is final),
+    except the reasons in NO_ALERT_REASONS."""
     req.move_to(State.BLOCKED, action, reason)
     log(req, actor, action, "blocked", reason=reason)
+    if reason in NO_ALERT_REASONS:
+        return req.public_view()
     raise_alert(
         req,
         {
@@ -160,27 +167,30 @@ def create_request(body: CreateResetRequest, kc=Depends(get_keycloak), store: St
     if body.kind == Kind.mfa_change_phone and body.new_phone is None:
         raise HTTPException(422, "new_phone is required for mfa_change_phone")
     username = body.claimed_username.strip().lower()
+    agent_id = (
+        body.agent_id.strip().lower()
+    )  # same treatment as the username, so approver != agent cannot be dodged by spelling
     with store.lock:
-        user = keycloak_call(None, body.agent_id, "create", kc.get_user, username)
+        user = keycloak_call(None, agent_id, "create", kc.get_user, username)
         req = store.add(
             ResetRequest(
                 kind=body.kind,
                 username=username,
-                agent_id=body.agent_id,
+                agent_id=agent_id,
                 channel=body.channel,
                 new_phone=body.new_phone,
             )
         )
         if user is None:
-            return block(req, body.agent_id, "create", "unknown_user")
+            return block(req, agent_id, "create", "unknown_user")
         if not user.phone:  # without a number on file there is nobody to call back
-            return block(req, body.agent_id, "create", "no_phone_on_file")
+            return block(req, agent_id, "create", "no_phone_on_file")
 
         req.phone_on_file = user.phone
         req.is_privileged = "privileged" in user.groups
         apply_rule5(store, req)
         req.move_to(State.OPEN, "create")
-        log(req, body.agent_id, "create", "ok", kind=body.kind.value, needs_approval=req.needs_approval)
+        log(req, agent_id, "create", "ok", kind=body.kind.value, needs_approval=req.needs_approval)
         # The agent needs the number to dial; the callback itself happens outside the service.
         return {**req.public_view(), "phone_on_file": req.phone_on_file}
 
@@ -211,6 +221,8 @@ def check_otp(request_id: str, body: OtpBody, kc=Depends(get_keycloak), store: S
         req = find_request(store, request_id)
         actor = req.agent_id
         require_step(req, "otp", actor)
+        # Rule 5 first: even a request that ends ESCALATED must raise its alert if a reset completed meanwhile.
+        apply_rule5(store, req)
         if not keycloak_call(req, actor, "otp", kc.has_otp_device, req.username):
             req.move_to(State.ESCALATED, "otp", "no_registered_device")
             log(req, actor, "otp", "escalated", reason="no_registered_device")
@@ -229,7 +241,6 @@ def check_otp(request_id: str, body: OtpBody, kc=Depends(get_keycloak), store: S
             return req.public_view()  # state unchanged: the agent may try again
         store.last_otp_step[req.username] = step  # this code (and any older one) can never be used again
         req.move_to(State.OTP_VERIFIED, "otp")
-        apply_rule5(store, req)  # a password reset may have completed since this request was opened
         if req.needs_approval:
             req.move_to(State.AWAITING_APPROVAL, "otp", "privileged" if req.is_privileged else "forced_approval")
         else:

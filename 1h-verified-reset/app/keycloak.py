@@ -148,6 +148,8 @@ class KeycloakClient:
         groups = self._json(self._admin("GET", f"/users/{raw['id']}/groups"))
         with expect_shape():
             phones = (raw.get("attributes") or {}).get("phone") or [None]
+            if not isinstance(phones, list) or not (phones[0] is None or isinstance(phones[0], str)):
+                raise TypeError("phone attribute is not a list of text")
             return UserInfo(
                 id=raw["id"],
                 username=raw["username"],
@@ -238,10 +240,13 @@ class KeycloakClient:
     def require_totp_setup(self, username: str) -> None:
         """Make Keycloak ask the user to set up an authenticator app at next login."""
         user = self._require_user(username)
-        actions = sorted(set(user.get("requiredActions") or []) | {"CONFIGURE_TOTP"})
-        self._admin("PUT", f"/users/{user['id']}", json={**user, "requiredActions": actions})
+        with expect_shape():
+            actions = sorted(set(user.get("requiredActions") or []) | {"CONFIGURE_TOTP"})
+            body = {**user, "requiredActions": actions}
+        self._admin("PUT", f"/users/{user['id']}", json=body)
 
     def set_phone(self, username: str, phone: str) -> None:
         user = self._require_user(username)
-        attributes = {**(user.get("attributes") or {}), "phone": [phone]}
-        self._admin("PUT", f"/users/{user['id']}", json={**user, "attributes": attributes})
+        with expect_shape():
+            body = {**user, "attributes": {**(user.get("attributes") or {}), "phone": [phone]}}
+        self._admin("PUT", f"/users/{user['id']}", json=body)

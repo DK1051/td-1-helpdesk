@@ -41,7 +41,7 @@ def real_client(tmp_path, monkeypatch):
 
 
 def current_code(username: str) -> str:
-    seeds = json.loads((DEV_DIR / "seeds.json").read_text())
+    seeds = json.loads(Path(os.environ.get("SEEDS_PATH", DEV_DIR / "seeds.json")).read_text())
     return pyotp.TOTP(seeds[username]).now()
 
 

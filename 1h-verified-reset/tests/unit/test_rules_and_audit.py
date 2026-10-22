@@ -116,12 +116,12 @@ def test_every_audit_line_is_json_with_the_required_fields(client, kc):
     request_id = create(client).json()["id"]
     client.post(f"/reset-requests/{request_id}/otp", json={"code": "1"})  # out of order
     lines = audit_lines()
-    assert len(lines) == 8
+    assert len(lines) == 7
     for line in lines:
         assert set(line) == {"ts", "request_id", "actor", "action", "outcome", "details"}
         assert isinstance(line["details"], dict)
         datetime.fromisoformat(line["ts"])
-    assert {"ok", "blocked", "out_of_order", "raised"} <= {x["outcome"] for x in lines}
+    assert {"ok", "blocked", "out_of_order"} <= {x["outcome"] for x in lines}
 
 
 # ---- the 24-hour edge: inclusive at exactly 24 h, none one second later --------------------------

@@ -16,7 +16,9 @@ import os
 import re
 import sys
 import tempfile
+import time
 from dataclasses import dataclass, field
+from datetime import UTC, datetime
 from pathlib import Path
 
 import httpx
@@ -126,11 +128,23 @@ def format_result(result: CaseResult) -> str:
 
 # ---- where one-time codes come from ------------------------------------------------------------
 def seed_code_provider(seeds_path: Path):
-    """Live mode: compute the current code from the dev seed file (dev only; see README, D1)."""
+    """Live mode: compute the current code from the dev seed file (dev only; see README, D1).
+
+    The service refuses a code from a time step it has already accepted. So if this process already
+    used the current step for a user, wait for the next 30-second step before asking again.
+    (A code used by some OTHER process in the same 30 seconds, e.g. a curl step, is not known here:
+    wait for the next step yourself.)
+    """
+    last_step_used: dict[str, int] = {}
 
     def code_for(username: str) -> str:
-        seeds = json.loads(Path(seeds_path).read_text())
-        return pyotp.TOTP(seeds[username]).now()
+        totp = pyotp.TOTP(json.loads(Path(seeds_path).read_text())[username])
+        step = totp.timecode(datetime.now(UTC))
+        if last_step_used.get(username, -1) >= step:
+            time.sleep(totp.interval - time.time() % totp.interval + 0.5)
+            step = totp.timecode(datetime.now(UTC))
+        last_step_used[username] = step
+        return totp.generate_otp(step)
 
     return code_for
 
@@ -154,7 +168,8 @@ def _fresh_codes(fake):
 
 
 def run_offline(paths: list[Path]) -> list[CaseResult]:
-    """Each case gets a fresh service state and a fresh fake Keycloak, and its own log files."""
+    """Each case gets a fresh service state and a fresh fake Keycloak. All cases share one temporary
+    pair of log files, so a case's alert count is measured as a difference (after minus before)."""
     from fastapi.testclient import TestClient
 
     from .fake_keycloak import dev_users_fake
@@ -162,17 +177,26 @@ def run_offline(paths: list[Path]) -> list[CaseResult]:
     from .state import Store
 
     results = []
-    with tempfile.TemporaryDirectory() as tmp:
-        os.environ["AUDIT_LOG_PATH"] = str(Path(tmp) / "audit.jsonl")
-        os.environ["ALERTS_LOG_PATH"] = str(Path(tmp) / "alerts.jsonl")
-        for path in paths:
-            fake, store = dev_users_fake(), Store()
-            app.dependency_overrides[get_keycloak] = _returning(fake)
-            app.dependency_overrides[get_store] = _returning(store)
-            try:
-                results.append(run_case(load_case(path), TestClient(app), _fresh_codes(fake)))
-            finally:
-                app.dependency_overrides.clear()
+    names = ("AUDIT_LOG_PATH", "ALERTS_LOG_PATH")
+    saved = {name: os.environ.get(name) for name in names}  # put back afterwards: callers' settings stay theirs
+    try:
+        with tempfile.TemporaryDirectory() as tmp:
+            os.environ["AUDIT_LOG_PATH"] = str(Path(tmp) / "audit.jsonl")
+            os.environ["ALERTS_LOG_PATH"] = str(Path(tmp) / "alerts.jsonl")
+            for path in paths:
+                fake, store = dev_users_fake(), Store()
+                app.dependency_overrides[get_keycloak] = _returning(fake)
+                app.dependency_overrides[get_store] = _returning(store)
+                try:
+                    results.append(run_case(load_case(path), TestClient(app), _fresh_codes(fake)))
+                finally:
+                    app.dependency_overrides.clear()
+    finally:
+        for name, value in saved.items():
+            if value is None:
+                os.environ.pop(name, None)
+            else:
+                os.environ[name] = value
     return results
 
 

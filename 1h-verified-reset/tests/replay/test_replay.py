@@ -9,7 +9,7 @@ ATTACKS = [p for p in CASE_FILES if p.stem != CONTROL]
 
 
 @pytest.fixture(scope="module")
-def results(tmp_path_factory):
+def results():
     """Run every case once (offline) and index the results by case id."""
     return {r.case_id: r for r in replay.run_offline(CASE_FILES)}
 

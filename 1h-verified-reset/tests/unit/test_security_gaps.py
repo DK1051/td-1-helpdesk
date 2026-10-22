@@ -1,6 +1,7 @@
 """Tests for the gaps found in the T1-S02 reviews (G1-G5) and the blocked-request alert (Q2)."""
 
 import json
+from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime, timedelta
 
 import httpx
@@ -201,10 +202,14 @@ def blocked_alerts(client) -> list[dict]:
     return [a for a in alerts(client) if a["reason"] == "blocked_identity_request"]
 
 
-def test_unknown_user_raises_a_blocked_alert(client):
-    request_id = create(client, user="nobody.here").json()["id"]
-    (alert,) = blocked_alerts(client)
-    assert (alert["request_id"], alert["blocked_because"], alert["kind"]) == (request_id, "unknown_user", "password")
+def test_unknown_user_and_missing_phone_raise_no_alert_but_are_audited(client, kc):
+    kc.add_user("no.phone", None, device=True)
+    unknown = create(client, user="nobody.here").json()
+    no_phone = create(client, user="no.phone").json()
+    assert (unknown["reason"], no_phone["reason"]) == ("unknown_user", "no_phone_on_file")
+    assert alerts(client) == []  # no real account was at risk
+    blocked_lines = [x for x in audit_lines() if x["outcome"] == "blocked"]
+    assert [x["details"]["reason"] for x in blocked_lines] == ["unknown_user", "no_phone_on_file"]
 
 
 def test_wrong_callback_number_raises_one_blocked_alert(client):
@@ -226,3 +231,83 @@ def test_escalated_and_completed_requests_raise_no_blocked_alert(client, kc):
     request_id = open_request_at_callback_done(client, user="sofia.alvarez")
     assert send_code(client, request_id, "000000").json()["state"] == "ESCALATED"
     assert blocked_alerts(client) == []
+
+
+# ---- review items -------------------------------------------------------------------------------------------------------
+@pytest.mark.parametrize("agent_spelling", [" marcus.chen", "Marcus.Chen ", "MARCUS.CHEN"])
+def test_agent_id_is_normalised_so_the_approver_check_cannot_be_dodged(client, kc, agent_spelling):
+    created = create(client, "password", "daniel.okafor", agent_id=agent_spelling).json()
+    assert created["agent_id"] == "marcus.chen"
+    call_back(client, created["id"], "555-0104")
+    send_code(client, created["id"])
+    response = client.post(f"/reset-requests/{created['id']}/approve", headers=AUTH_MANAGER)  # marcus.chen's token
+    assert response.status_code == 403
+    assert any(x["details"].get("reason") == "approver_is_agent" for x in audit_lines())
+
+
+def test_one_code_sent_eight_times_in_parallel_across_two_requests_passes_once(client, kc):
+    kc.otp_delay = 0.03  # widens the race window; an unlocked version would let several through
+    first, second = open_request_at_callback_done(client), open_request_at_callback_done(client)
+    code = kc.fresh_code()
+    ids = [first, second] * 4
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        results = list(pool.map(lambda rid: send_code(client, rid, code).json(), ids))
+    assert [r.get("state") for r in results].count("APPROVED") == 1  # the rest: refused, blocked or 409
+
+
+def test_escalated_mfa_request_opened_before_a_reset_still_alerts(client, kc):
+    mfa = create(client, "mfa_reset", "priya.nair").json()["id"]  # opened first, no alert yet
+    completed_password_reset(client, kc, "priya.nair")
+    kc.devices.discard("priya.nair")  # her device is gone by the time the code step comes
+    call_back(client, mfa, "555-0101")
+    assert send_code(client, mfa).json()["state"] == "ESCALATED"
+    assert [a["reason"] for a in alerts(client)] == ["mfa_change_within_24h_of_password_reset"]
+
+
+def test_odd_attributes_make_set_phone_and_totp_setup_fail_closed(monkeypatch):
+    bad_user = [{"id": "abc", "username": "priya.nair", "attributes": "oops", "requiredActions": 5}]
+    kc = real_client_answering(keycloak_that_answers(bad_user), monkeypatch)
+    for call in (lambda: kc.set_phone("priya.nair", "555-0188"), lambda: kc.require_totp_setup("priya.nair")):
+        with pytest.raises(KeycloakError) as caught:
+            call()
+        assert str(caught.value) == "bad_response"
+
+
+def test_phone_attribute_that_is_not_a_list_is_bad_response(monkeypatch):
+    user = [{"id": "abc", "username": "priya.nair", "attributes": {"phone": 5550101}}]
+    kc = real_client_answering(keycloak_that_answers(user), monkeypatch)
+    with pytest.raises(KeycloakError):
+        kc.get_user("priya.nair")
+
+
+def test_service_answers_502_when_keycloak_data_is_odd_at_issue_time(monkeypatch, tmp_path):
+    """create/callback/code work against a normal user, then the user record turns odd: issue gives 502 + audit."""
+    seed = pyotp.random_base32()
+    (tmp_path / "seeds.json").write_text(json.dumps({"priya.nair": seed}))
+    monkeypatch.setenv("SEEDS_PATH", str(tmp_path / "seeds.json"))
+    good = {"id": "abc", "username": "priya.nair", "attributes": {"phone": ["555-0101"]}}
+    calls = {"users": 0}
+
+    def handler(request):
+        path = request.url.path
+        if path.endswith("/openid-connect/token"):
+            return httpx.Response(200, json={"access_token": "x", "expires_in": 60})
+        if path.endswith("/groups"):
+            return httpx.Response(200, json=[])
+        calls["users"] += 1
+        return httpx.Response(200, json=[good] if calls["users"] == 1 else [{**good, "attributes": "oops"}])
+
+    real = real_client_answering(handler, monkeypatch)
+    app.dependency_overrides[get_keycloak] = lambda: real
+    store = Store()
+    app.dependency_overrides[get_store] = lambda: store
+    try:
+        http = TestClient(app)
+        created = create(http, "mfa_change_phone", "priya.nair", new_phone="555-0188").json()
+        call_back(http, created["id"], "555-0101")
+        code = pyotp.TOTP(seed).now()
+        assert http.post(f"/reset-requests/{created['id']}/otp", json={"code": code}).json()["state"] == "APPROVED"
+        assert issue(http, created["id"]).status_code == 502
+    finally:
+        app.dependency_overrides.clear()
+    assert audit_lines()[-1]["details"] == {"error": "bad_response"}
