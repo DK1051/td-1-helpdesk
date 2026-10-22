@@ -6,14 +6,14 @@ Why this attack matters, with the sources, is in the hub: [docs/STORY.md](https:
 
 ## Status
 
-**In progress.** 1E is being built (T1-S01) and 1H has its core service and tests (T1-S02); 1A is still planned. The schedule is in [docs/RUN-SHEET.md](docs/RUN-SHEET.md). Status words (same in every repo of the portfolio): `Planned` → `In progress (session IDs)` → `Built` → `Verified` (verify report linked) → `Cut` (moved to after Nov 5, 2026).
+**In progress.** 1E is being built (T1-S01) and 1H has its core service, tests, replay of the four social-engineering tickets and the alleged Clorox sequence, and a demo (T1-S02, T1-S03); 1A is still planned. The schedule is in [docs/RUN-SHEET.md](docs/RUN-SHEET.md). Status words (same in every repo of the portfolio): `Planned` → `In progress (session IDs)` → `Built` → `Verified` (verify report linked) → `Cut` (moved to after Nov 5, 2026).
 
 ## Projects
 
 | Project | Level | Folder | What it shows | Status |
 |---|---|---|---|---|
 | 1E Front Desk Casebook | Easy | `1e-front-desk-casebook/` | A caller-verification procedure (SOP) built on AL26-010, a ticket template, ten realistic helpdesk tickets (six break-fix, four phone reset requests that are social engineering) that I solve myself, and knowledge-base articles in English and Korean | In progress (T1-S01) |
-| 1H Verified Reset Service | Hard | `1h-verified-reset/` | A small web service (FastAPI) a helpdesk agent uses to run a reset. It enforces the steps in order — callback to the phone number on file, one-time code to the registered device, manager approval for privileged accounts, a temporary password that expires in 60 minutes — and alerts on any MFA change within 24 hours of a reset. Tested against the four social-engineering tickets and the alleged Clorox sequence | In progress (T1-S02) |
+| 1H Verified Reset Service | Hard | `1h-verified-reset/` | A small web service (FastAPI) a helpdesk agent uses to run a reset. It enforces the steps in order — callback to the phone number on file, one-time code to the registered device, manager approval for privileged accounts, a temporary password that expires in 60 minutes — and alerts on any MFA change within 24 hours of a reset. Tested against the four social-engineering tickets and the alleged Clorox sequence | In progress (T1-S02, T1-S03) |
 | 1A Helpdesk Bot Stress Test | Hard + AI | `1a-bot-stress-test/` | An AI helpdesk assistant whose only actions are calls to the 1H service, run against 40 attack scripts (20 English, 20 Korean) and 20 genuine requests that I write. Scored on whether it verified before acting, escalated correctly, and refused genuine users — by language and by model, with cost per run | Planned |
 
 ## What I do and what Claude does
