@@ -135,3 +135,23 @@ def test_mfa_change_phone_updates_the_number(client, kc):
 
 def test_change_phone_requires_a_new_number(client):
     assert create(client, "mfa_change_phone").status_code == 422
+
+
+def test_a_second_approval_is_409(client, kc):
+    request_id = verify_until_approved(client, kc, "password", "daniel.okafor")
+    url = f"/reset-requests/{request_id}/approve"
+    assert client.post(url, headers=AUTH_MANAGER).status_code == 200
+    assert client.post(url, headers=AUTH_MANAGER).status_code == 409  # already APPROVED
+
+
+def test_approving_a_blocked_request_is_409(client, kc):
+    created = create(client, user="daniel.okafor").json()
+    call_back(client, created["id"], "555-9999")  # wrong number -> BLOCKED
+    response = client.post(f"/reset-requests/{created['id']}/approve", headers=AUTH_MANAGER)
+    assert response.status_code == 409
+
+
+def test_bearer_scheme_is_case_insensitive(client, kc):
+    request_id = verify_until_approved(client, kc, "password", "daniel.okafor")
+    response = client.post(f"/reset-requests/{request_id}/approve", headers={"Authorization": "bearer manager-token"})
+    assert response.status_code == 200

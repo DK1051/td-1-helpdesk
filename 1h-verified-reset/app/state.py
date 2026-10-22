@@ -8,6 +8,7 @@ Each step may only be taken from one state (REQUIRED_STATE). Anything else is
 "out of order" and main.py answers HTTP 409.
 """
 
+import threading
 import uuid
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
@@ -110,6 +111,8 @@ class Store:
     def __init__(self) -> None:
         self.requests: dict[str, ResetRequest] = {}
         self.temp_passwords: list[TempPassword] = []
+        # Held by each step handler for its whole body (see main.py).
+        self.lock = threading.Lock()
 
     def add(self, request: ResetRequest) -> ResetRequest:
         self.requests[request.id] = request

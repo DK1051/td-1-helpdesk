@@ -2,11 +2,12 @@
 
 import json
 import os
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta
 from pathlib import Path
 
 from app import clock
-from flows import audit_lines, completed_password_reset, create, verify_until_approved
+from flows import audit_lines, call_back, completed_password_reset, create, send_code, state_of, verify_until_approved
 
 
 def alerts(client) -> list[dict]:
@@ -82,7 +83,7 @@ def test_mfa_change_event_inside_24_hours_alerts(client, kc):
     clock.advance(timedelta(hours=23))
     body = {"username": "priya.nair", "change": "otp_device_added", "source": "keycloak-admin"}
     assert client.post("/mfa-change-events", json=body).json() == {"alerted": True}
-    assert alerts(client)[0]["change"] == "otp_device_added"
+    assert alerts(client)[0]["requested_change"] == "otp_device_added"
 
 
 def test_mfa_change_event_outside_24_hours_does_not_alert(client, kc):
@@ -111,3 +112,73 @@ def test_every_audit_line_is_json_with_the_required_fields(client, kc):
         assert isinstance(line["details"], dict)
         datetime.fromisoformat(line["ts"])
     assert {"ok", "blocked", "out_of_order"} <= {x["outcome"] for x in lines}
+
+
+# ---- the 24-hour edge: inclusive at exactly 24 h, none one second later --------------------------
+def test_24_hour_edge_for_requests(client, kc):
+    completed_password_reset(client, kc, "priya.nair")
+    clock.advance(timedelta(hours=24))
+    verify_until_approved(client, kc, "mfa_reset", "priya.nair")
+    assert len(alerts(client)) == 1  # exactly 24 h: still inside the window
+
+    clock.advance(timedelta(seconds=1))
+    verify_until_approved(client, kc, "mfa_enrol_device", "priya.nair")
+    assert len(alerts(client)) == 1  # 24 h + 1 s: no new alert
+
+
+def test_24_hour_edge_for_change_events(client, kc):
+    completed_password_reset(client, kc, "priya.nair")
+    body = {"username": "priya.nair", "change": "otp_device_added", "source": "keycloak-admin"}
+    clock.advance(timedelta(hours=24))
+    assert client.post("/mfa-change-events", json=body).json() == {"alerted": True}
+    clock.advance(timedelta(seconds=1))
+    assert client.post("/mfa-change-events", json=body).json() == {"alerted": False}
+
+
+def test_a_damaged_alert_line_is_skipped_not_a_500(client, kc):
+    completed_password_reset(client, kc, "priya.nair")
+    client.post("/mfa-change-events", json={"username": "priya.nair", "change": "x", "source": "s"})
+    with Path(os.environ["ALERTS_LOG_PATH"]).open("a") as f:
+        f.write('{"half written\n')
+    response = client.get("/alerts")
+    assert response.status_code == 200 and len(response.json()) == 1
+
+
+# ---- Keycloak trouble gives a clean error and an audit line, never a traceback ------------------------
+def test_keycloak_down_gives_502_and_an_audit_line(client, kc):
+    kc.down = True
+    response = create(client)
+    assert response.status_code == 502
+    line = audit_lines()[-1]
+    assert (line["action"], line["outcome"], line["details"]) == ("create", "keycloak_error", {"error": "network"})
+
+
+def test_failed_rotation_is_retried_and_does_not_stop_other_users(client, kc):
+    completed_password_reset(client, kc, "priya.nair")
+    clock.advance(timedelta(minutes=61))
+    kc.fail_set_password = True
+    first = client.post("/maintenance/expire-temp-passwords").json()
+    assert first == {"rotated": [], "failed": 1}
+    kc.fail_set_password = False  # Keycloak recovers: the same password is rotated on the next run
+    second = client.post("/maintenance/expire-temp-passwords").json()
+    assert len(second["rotated"]) == 1 and second["failed"] == 0
+
+
+def test_user_without_a_phone_on_file_is_blocked(client, kc):
+    kc.add_user("no.phone", None, otp_code="123456")
+    result = create(client, user="no.phone").json()
+    assert (result["state"], result["reason"]) == ("BLOCKED", "no_phone_on_file")
+
+
+# ---- two calls at once cannot beat the 3-try limit -------------------------------------------------
+def test_parallel_wrong_codes_still_block_after_exactly_three_failures(client, kc):
+    kc.otp_delay = 0.03  # makes an unlocked implementation fail this test reliably
+    created = create(client).json()
+    call_back(client, created["id"], "555-0101")
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        results = list(pool.map(lambda i: send_code(client, created["id"], f"00000{i}"), range(8)))
+    assert state_of(client, created["id"]) == "BLOCKED"
+    otp_lines = [x for x in audit_lines() if x["action"] == "otp"]
+    counted = [x for x in otp_lines if x["outcome"] in ("wrong_code", "blocked")]
+    assert len(counted) == 3  # exactly three wrong codes were ever evaluated
+    assert sorted(r.status_code for r in results).count(409) == 5

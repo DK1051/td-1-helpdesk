@@ -55,5 +55,11 @@ def read_alerts() -> list[dict]:
     path = alerts_path()
     if not path.exists():
         return []
+    alerts = []
     with path.open(encoding="utf-8") as f:
-        return [json.loads(line) for line in f if line.strip()]
+        for line in f:
+            try:
+                alerts.append(json.loads(line))
+            except ValueError:
+                continue  # skip a damaged or half-written line instead of failing the whole list
+    return alerts

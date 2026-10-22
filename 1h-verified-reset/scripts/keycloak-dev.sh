@@ -42,41 +42,54 @@ if ! up; then
 fi
 
 # ---- 2. small helpers around the admin REST API ------------------------------
-# The admin token is cached in a temp file because api() runs inside $( ) subshells.
-TOKEN_FILE="$(mktemp)"
-trap 'rm -f "$TOKEN_FILE"' EXIT
+# Scratch files (admin token, request bodies) live in a private folder INSIDE .dev/, not in /tmp,
+# and are deleted on exit. Secrets are passed to curl and jq through files, never as command-line
+# arguments, because command lines can be seen by other users of the machine (ps).
+WORK="$(mktemp -d -p "$DEV_DIR")"
+cleanup() { rm -rf "$WORK"; }
+trap cleanup EXIT
+trap 'exit 1' TERM   # api() sends TERM to this script on a failed call (see below)
+printf '%s' "$ADMIN_PASS" > "$WORK/admin.pass"
+
+# The admin token is cached in a file because api() usually runs inside $( ) command substitution,
+# and a variable set inside $( ) is lost when it ends: only a file survives to the next call.
 refresh_token() {
   # Master-realm admin tokens last about a minute, so fetch a new one when the cached one is 30 s old.
   local age=999
-  [ -s "$TOKEN_FILE" ] && age=$(( $(date +%s) - $(stat -c %Y "$TOKEN_FILE") ))
+  [ -s "$WORK/token" ] && age=$(( $(date +%s) - $(stat -c %Y "$WORK/token") ))
   if [ "$age" -gt 30 ]; then
     curl -s "$KC_URL/realms/master/protocol/openid-connect/token" \
       -d grant_type=password -d client_id=admin-cli \
-      --data-urlencode "username=$ADMIN_USER" --data-urlencode "password=$ADMIN_PASS" \
-      | jq -r '.access_token // empty' > "$TOKEN_FILE"
-    [ -s "$TOKEN_FILE" ] || { say "could not get an admin token (check KC_BOOTSTRAP_ADMIN_PASSWORD)"; exit 1; }
+      --data-urlencode "username=$ADMIN_USER" --data-urlencode "password@$WORK/admin.pass" \
+      | jq -r '.access_token // empty' > "$WORK/token"
+    if [ ! -s "$WORK/token" ]; then
+      say "could not get an admin token (check KC_BOOTSTRAP_ADMIN_PASSWORD)"
+      kill -TERM $$
+      exit 1
+    fi
   fi
-  TOKEN="$(cat "$TOKEN_FILE")"
+  printf 'Authorization: Bearer %s\n' "$(cat "$WORK/token")" > "$WORK/auth.header"
 }
 
-# api METHOD PATH [JSON]  -> prints the response body, fails on HTTP >= 400 (status only, never the body)
+# api METHOD PATH [JSON]  -> prints the response body. On HTTP >= 400 it prints one line (status
+# only, never the body) and stops the WHOLE script, so a failed GET can never fall through to a
+# misleading POST. (exit alone would only leave the $( ) subshell, hence kill -TERM on the parent.)
 api() {
   refresh_token
-  local method="$1" path="$2" body="${3:-}" out status
-  out="$(mktemp)"
+  local method="$1" path="$2" body="${3:-}" status
   if [ -n "$body" ]; then
-    status="$(curl -s -o "$out" -w '%{http_code}' -X "$method" "$KC_URL$path" \
-      -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' -d "$body")"
+    printf '%s' "$body" > "$WORK/body.json"
+    status="$(curl -s -o "$WORK/out" -w '%{http_code}' -X "$method" "$KC_URL$path" \
+      -H @"$WORK/auth.header" -H 'Content-Type: application/json' -d @"$WORK/body.json")"
   else
-    status="$(curl -s -o "$out" -w '%{http_code}' -X "$method" "$KC_URL$path" -H "Authorization: Bearer $TOKEN")"
+    status="$(curl -s -o "$WORK/out" -w '%{http_code}' -X "$method" "$KC_URL$path" -H @"$WORK/auth.header")"
   fi
-  if [ "$status" -ge 400 ]; then
-    rm -f "$out"
+  if [ "$status" -ge 400 ] || [ "$status" = "000" ]; then
     say "FAILED $method ${path%%\?*} -> HTTP $status"
+    kill -TERM $$
     exit 1
   fi
-  cat "$out"
-  rm -f "$out"
+  cat "$WORK/out"
 }
 
 A="/admin/realms/$REALM"
@@ -86,7 +99,7 @@ rand_b32() { head -c 20 /dev/urandom | base32 | tr -d '=\n'; }
 
 # ---- 3. realm ------------------------------------------------------------------
 refresh_token
-if [ "$(curl -s -o /dev/null -w '%{http_code}' -H "Authorization: Bearer $TOKEN" "$KC_URL/admin/realms/$REALM")" != "200" ]; then
+if [ "$(curl -s -o /dev/null -w '%{http_code}' -H @"$WORK/auth.header" "$KC_URL/admin/realms/$REALM")" != "200" ]; then
   api POST /admin/realms "{\"realm\":\"$REALM\",\"enabled\":true}" > /dev/null
   say "created realm $REALM"
 else
@@ -119,7 +132,7 @@ ROLE_JSON="$(api GET "$A/roles/manager")"
 # reset-service: confidential. Secret generated once, kept in .dev/reset-service.secret.
 SECRET_FILE="$DEV_DIR/reset-service.secret"
 [ -s "$SECRET_FILE" ] || rand_b64 > "$SECRET_FILE"
-SERVICE_JSON="$(jq -n --arg secret "$(cat "$SECRET_FILE")" '{clientId:"reset-service",name:"Verified Reset Service",
+SERVICE_JSON="$(jq -n --rawfile secret "$SECRET_FILE" '{clientId:"reset-service",name:"Verified Reset Service",
   enabled:true,publicClient:false,serviceAccountsEnabled:true,standardFlowEnabled:false,
   directAccessGrantsEnabled:false,secret:$secret}')"
 CLIENT_ID="$(api GET "$A/clients?clientId=reset-service" | jq -r '.[0].id // empty')"
@@ -147,7 +160,9 @@ if [ -z "$CONSOLE_ID" ]; then
   say "created client helpdesk-console"
 fi
 # Keycloak 26 only introspects tokens that name the asking client as an audience, so manager
-# tokens must carry "reset-service" as an audience.
+# tokens must carry "reset-service" as an audience. The service also checks this itself.
+# TODO(verify): that Keycloak 26 introspection really requires the asking client in `aud` (seen on
+# 26.8.1 in this lab: without the mapper, introspection answered active=false); check the 26.x docs.
 if [ "$(api GET "$A/clients/$CONSOLE_ID/protocol-mappers/models" | jq '[.[].name] | index("audience-reset-service") != null')" != "true" ]; then
   api POST "$A/clients/$CONSOLE_ID/protocol-mappers/models" '{"name":"audience-reset-service",
     "protocol":"openid-connect","protocolMapper":"oidc-audience-mapper",
@@ -187,11 +202,12 @@ for row in "${USERS[@]}"; do
     api POST "$A/users/$uid/role-mappings/realm" "[$ROLE_JSON]" > /dev/null
     [ -s "$DEV_DIR/manager.password" ] || rand_b64 > "$DEV_DIR/manager.password"
     api PUT "$A/users/$uid/reset-password" \
-      "$(jq -n --arg v "$(cat "$DEV_DIR/manager.password")" '{type:"password",value:$v,temporary:false}')" > /dev/null
+      "$(jq -n --rawfile v "$DEV_DIR/manager.password" '{type:"password",value:$v,temporary:false}')" > /dev/null
   fi
   if [ "$totp" = "yes" ] && [ "$(jq --arg u "$uname" 'has($u)' "$SEEDS")" != "true" ]; then
     # Dev copy of the seed (design decision D1). Never printed.
-    jq --arg u "$uname" --arg s "$(rand_b32)" '. + {($u): $s}' "$SEEDS" > "$SEEDS.tmp" && mv "$SEEDS.tmp" "$SEEDS"
+    rand_b32 > "$WORK/seed"
+    jq --arg u "$uname" --rawfile s "$WORK/seed" '. + {($u): $s}' "$SEEDS" > "$SEEDS.tmp" && mv "$SEEDS.tmp" "$SEEDS"
   fi
 done
 chmod 600 "$DEV_DIR"/* 2>/dev/null || true
