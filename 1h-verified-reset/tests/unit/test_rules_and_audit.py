@@ -7,7 +7,17 @@ from datetime import datetime, timedelta
 from pathlib import Path
 
 from app import clock
-from flows import audit_lines, call_back, completed_password_reset, create, send_code, state_of, verify_until_approved
+from flows import (
+    AUTH_MANAGER,
+    audit_lines,
+    call_back,
+    completed_password_reset,
+    create,
+    issue,
+    send_code,
+    state_of,
+    verify_until_approved,
+)
 
 
 def alerts(client) -> list[dict]:
@@ -182,3 +192,32 @@ def test_parallel_wrong_codes_still_block_after_exactly_three_failures(client, k
     counted = [x for x in otp_lines if x["outcome"] in ("wrong_code", "blocked")]
     assert len(counted) == 3  # exactly three wrong codes were ever evaluated
     assert sorted(r.status_code for r in results).count(409) == 5
+
+
+# ---- rule 5 is re-checked when the reset completes while an MFA request is already open ----------------
+def test_mfa_request_opened_before_the_reset_is_caught_at_the_code_step(client, kc):
+    mfa = create(client, "mfa_reset", "priya.nair").json()  # opened first: no reset yet, no alert
+    assert alerts(client) == []
+    completed_password_reset(client, kc, "priya.nair")  # a password reset completes meanwhile
+    call_back(client, mfa["id"], "555-0101")
+    assert send_code(client, mfa["id"]).json()["state"] == "AWAITING_APPROVAL"
+    assert len(alerts(client)) == 1
+
+
+def test_mfa_request_approved_before_the_reset_is_caught_at_issue(client, kc):
+    request_id = verify_until_approved(client, kc, "mfa_reset", "priya.nair")
+    assert state_of(client, request_id) == "APPROVED"  # regular user, no reset yet
+    completed_password_reset(client, kc, "priya.nair")
+
+    refused = issue(client, request_id)
+    assert refused.status_code == 409
+    assert state_of(client, request_id) == "AWAITING_APPROVAL"
+    assert len(alerts(client)) == 1
+    assert kc.has_otp_device("priya.nair")  # nothing was changed
+    assert any(x["details"].get("reason") == "needs_approval_rule5" for x in audit_lines())
+
+    assert issue(client, request_id).status_code == 409  # still waiting; no second alert
+    assert len(alerts(client)) == 1
+    client.post(f"/reset-requests/{request_id}/approve", headers=AUTH_MANAGER)
+    assert issue(client, request_id).json()["state"] == "COMPLETED"
+    assert not kc.has_otp_device("priya.nair")

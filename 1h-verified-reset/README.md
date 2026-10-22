@@ -66,7 +66,7 @@ Each step works from exactly one state: callback from `OPEN`, code from `CALLBAC
 
 ## Rule 5: the 24-hour watch
 
-An MFA-kind request (`mfa_reset`, `mfa_enrol_device`, `mfa_change_phone`) created within 24 hours after a **completed** password reset for the same user writes an alert **and** is forced to `AWAITING_APPROVAL`, even for a regular user. Why: "reset the password, then reset the MFA" is the takeover pattern in AL26-010, so a second person must look before the second step. `POST /mfa-change-events` applies the same alert rule to MFA changes made elsewhere. The window is inclusive: exactly 24 hours still alerts, 24 hours and one second does not. Time comes from `clock.now()`, which tests move.
+An MFA-kind request (`mfa_reset`, `mfa_enrol_device`, `mfa_change_phone`) that is created or continued within 24 hours after a **completed** password reset for the same user writes an alert **and** is forced to `AWAITING_APPROVAL`, even for a regular user. The rule is checked when the request is created, again when its code is accepted, and again at `issue`, because a password reset can complete while an MFA request is already open: at `issue`, a request that was approved without a manager is refused with 409 (`needs_approval_rule5`), alerted and moved back to `AWAITING_APPROVAL`. A request alerts only once. Why: "reset the password, then reset the MFA" is the takeover pattern in AL26-010, so a second person must look before the second step. `POST /mfa-change-events` applies the same alert rule to MFA changes made elsewhere. The window is inclusive: exactly 24 hours still alerts, 24 hours and one second does not. Time comes from `clock.now()`, which tests move.
 
 ## Design decisions
 

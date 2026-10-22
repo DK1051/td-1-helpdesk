@@ -125,6 +125,19 @@ def alert_if_after_password_reset(store: Store, username: str, change: str, sour
     return True
 
 
+def apply_rule5(store: Store, req: ResetRequest) -> bool:
+    """Rule 5 for an MFA-kind request: if the user had a password reset completed in the last
+    24 h, write one alert and force a manager's approval. Called at create, at the code step
+    and at issue, because the reset can complete while this request is already open.
+    Returns True only the first time it applies, so a request alerts once."""
+    if req.kind not in MFA_KINDS or req.forced_approval:
+        return False
+    if alert_if_after_password_reset(store, req.username, req.kind.value, "reset-service", req.id):
+        req.forced_approval = True
+        return True
+    return False
+
+
 # ---- endpoints -----------------------------------------------------------------
 @app.post("/reset-requests", status_code=201)
 def create_request(body: CreateResetRequest, kc=Depends(get_keycloak), store: Store = Depends(get_store)):
@@ -149,10 +162,7 @@ def create_request(body: CreateResetRequest, kc=Depends(get_keycloak), store: St
 
         req.phone_on_file = user.phone
         req.is_privileged = "privileged" in user.groups
-        if body.kind in MFA_KINDS and alert_if_after_password_reset(
-            store, username, body.kind.value, "reset-service", req.id
-        ):
-            req.forced_approval = True
+        apply_rule5(store, req)
         req.move_to(State.OPEN, "create")
         log(req, body.agent_id, "create", "ok", kind=body.kind.value, needs_approval=req.needs_approval)
         # The agent needs the number to dial; the callback itself happens outside the service.
@@ -196,6 +206,7 @@ def check_otp(request_id: str, body: OtpBody, kc=Depends(get_keycloak), store: S
             log(req, actor, "otp", "wrong_code", attempts_left=MAX_OTP_ATTEMPTS - req.otp_failures)
             return req.public_view()  # state unchanged: the agent may try again
         req.move_to(State.OTP_VERIFIED, "otp")
+        apply_rule5(store, req)  # a password reset may have completed since this request was opened
         if req.needs_approval:
             req.move_to(State.AWAITING_APPROVAL, "otp", "privileged" if req.is_privileged else "forced_approval")
         else:
@@ -237,6 +248,11 @@ def issue(request_id: str, kc=Depends(get_keycloak), store: Store = Depends(get_
         req = find_request(store, request_id)
         actor = req.agent_id
         require_step(req, "issue", actor)
+        if req.approver is None and apply_rule5(store, req):
+            # Approved without a manager, but a password reset completed in the meantime.
+            req.move_to(State.AWAITING_APPROVAL, "issue", "needs_approval_rule5")
+            log(req, actor, "issue", "refused", reason="needs_approval_rule5")
+            raise HTTPException(409, "a password reset completed recently: a manager must approve first")
         result: dict = {}
 
         if req.kind == Kind.password:
