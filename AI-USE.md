@@ -18,9 +18,11 @@ Eojin
 
 ## 1H Verified Reset Service
 Claude (models used)
-- (to be filled at wrap)
+- T1-S02 director (Opus 5.5): checked Needs, explained D1/D2 in plain words and proposed the plan; integrated, logged caveats, opened the PR.
+- T1-S02 `builder` (Sonnet 5.5): `scripts/keycloak-dev.sh`, the FastAPI service in `app/`, 46 unit tests with a fake Keycloak and 6 integration tests against a local Keycloak 26.8.1, the draft 1H README; then applied the redteam fixes.
+- T1-S02 `redteam` (Fable 5.1): mid-review (17 items, all handled). `verifier` (Opus 5.5): final check, `docs/verify/T1-S02.md`.
 Eojin
-- (to be filled at wrap)
+- Approved the plan and the D1/D2/Rule-5 choices. Still to do: read the README state-machine list before T1-C1 (you will be asked why each step is where it is); record the credit balance.
 
 ## 1A Helpdesk Bot Stress Test
 Claude (models used)
