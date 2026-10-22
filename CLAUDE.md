@@ -34,6 +34,14 @@ If it blocks a later session, mark that session `BLOCKED (see CAVEATS)` in `docs
 - Each brief has a credit cap. If the session will clearly exceed it, stop and ask.
 - At `wrap`, remind Eojin to record the credit balance (usage menu) before and after in `COSTS.md`.
 
+## Token rules (added 2026-10-22 by Eojin; where these conflict with the sections above, these win)
+- One repo per session. Do not open, edit or check another repo in the same session.
+- Never wait on CI in-session: push, open the PR, enable auto-merge (`gh pr merge --squash --auto`; in a cloud session without `gh`, use the GitHub tool that enables auto-merge; if no tool can enable it, open the PR, tell Eojin to turn auto-merge on, and never merge directly), then end. CI and the merge finish without the session. This replaces "Eojin squash-merges in the GitHub web UI" for PRs whose required checks pass; Eojin can still turn auto-merge off on any PR.
+- Docs-only work (Markdown, run sheets, briefs, READMEs) gets the `verifier` only, with no `redteam` mid-review. Code (Python, PowerShell, Bicep, workflows, tests, data generators) gets `redteam` + `verifier` (the `verifier` still stands in for `redteam` on attack, injection or detection files).
+- Read only the files the brief names, plus this file and the files the short prompts above name. Do not explore the rest of the repo.
+- Skip network checks already recorded as blocked in this repo's `docs/CAVEATS.md` or `docs/PROBES.md`, and list them as "skipped (blocked)" in the verify report.
+- Never re-run a check that already passed on the same commit.
+
 ## Safety rules (never break)
 - Never ask for, print, store or commit passwords, tokens, keys, tenant or subscription IDs, or personal data. Secrets live only in GitHub Actions secrets or the cloud environment's network secrets, set by Eojin.
 - Never connect to Eojin's Microsoft 365 / Entra tenant or Azure subscription from a cloud session. Code that talks to them is tested here against mocks; Eojin runs it, or GitHub Actions does through OIDC.
