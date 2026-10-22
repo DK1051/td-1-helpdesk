@@ -1,0 +1,44 @@
+# CI for td-1-helpdesk. The branch ruleset requires a job with the exact id `checks` — do not rename it.
+# No secrets are used here beyond the automatic GITHUB_TOKEN. Integration tests that need Keycloak
+# are marked `keycloak` and skip themselves when no server is running (so CI stays green without one).
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+# gitleaks reads the pull request's commits and comments on a leak
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out (full history, so gitleaks can scan every commit in the PR)
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Install pinned dependencies (if requirements.txt exists)
+        run: |
+          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+
+      - name: Lint (ruff)
+        run: ruff check .
+
+      - name: Tests (pytest; exit code 5 means "no tests collected", which is allowed)
+        run: pytest -q || [ $? -eq 5 ]
+
+      - name: Secret scan (gitleaks)
+        uses: gitleaks/gitleaks-action@v3
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
