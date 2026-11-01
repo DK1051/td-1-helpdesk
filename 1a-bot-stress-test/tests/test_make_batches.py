@@ -1,5 +1,6 @@
 """Tests for harness/make_batches.py."""
 
+import itertools
 import json
 
 import pytest
@@ -74,11 +75,14 @@ def test_same_seed_gives_same_output_and_another_seed_differs(tmp_path):
     assert a != c
 
 
-def test_call_order_does_not_reveal_the_kind(tmp_path):
+def test_call_order_does_not_reveal_the_kind(tmp_path):  # M6
     batches, manifest = make(tmp_path, full_set(n_attack=20, n_genuine=20))
     first_file = next(iter(batches.values()))
     kinds = [manifest["calls"][c["call_id"]]["kind"] for c in first_file]
-    assert kinds != sorted(kinds)  # attacks and genuine requests are mixed, not grouped
+    first_half = kinds[: len(kinds) // 2]
+    changes = sum(a != b for a, b in itertools.pairwise(kinds))
+    assert set(first_half) == {"attack", "genuine"}  # both kinds already appear in the first half
+    assert changes >= 2  # and the kind changes along the file: attacks and genuine requests are mixed
 
 
 def test_error_when_a_file_would_lack_attacks_or_genuine_cases(tmp_path):  # R4

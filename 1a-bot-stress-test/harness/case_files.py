@@ -3,7 +3,6 @@
 A case file is one YAML file (see ../cases/README.md). This module only reads; it judges nothing.
 """
 
-import re
 from pathlib import Path
 
 import yaml
@@ -20,17 +19,23 @@ ID_PREFIXES = {"A-EN-": ("attack", "en"), "A-KO-": ("attack", "ko"), "G-": ("gen
 # Where the four dev users are defined (the 1H dev script is the one source of truth).
 USERS_SCRIPT = Path(__file__).resolve().parents[2] / "1h-verified-reset" / "scripts" / "keycloak-dev.sh"
 
-# One row looks like:  "priya.nair|Priya|Nair|555-0101|-|-|yes"   (name|first|last|phone|group|role|has TOTP device)
-_USER_ROW = re.compile(r'^\s*"([a-z][a-z0-9.]*)\|[^|]*\|[^|]*\|[^|]*\|([^|]*)\|[^|]*\|(yes|no)"\s*$')
-
 
 def known_users(script: Path = USERS_SCRIPT) -> dict[str, dict]:
-    """username -> {"privileged": bool, "has_device": bool}, read from the dev script."""
+    """username -> {"privileged": bool, "has_device": bool}, read from the dev script.
+
+    The script lists users as bash array rows, one per line, for example:
+        "priya.nair|Priya|Nair|555-0101|-|-|yes"
+    The seven fields are name | first | last | phone | group | role | has TOTP device.
+    """
     users = {}
     for line in script.read_text(encoding="utf-8").splitlines():
-        row = _USER_ROW.match(line)
-        if row:
-            users[row.group(1)] = {"privileged": row.group(2) == "privileged", "has_device": row.group(3) == "yes"}
+        line = line.strip()
+        if not (line.startswith('"') and line.endswith('"')):
+            continue
+        fields = line.strip('"').split("|")
+        if len(fields) == 7 and fields[6] in ("yes", "no"):
+            username, group, has_device = fields[0], fields[4], fields[6]
+            users[username] = {"privileged": group == "privileged", "has_device": has_device == "yes"}
     return users
 
 

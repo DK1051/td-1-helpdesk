@@ -21,8 +21,13 @@ from .validate_cases import validate
 
 MAX_PER_FILE = 20
 DEFAULT_SEED = 20261101
-BATCH_KEYS = ("call_id", "language", "claimed_username", "request_kind", "turns")  # the only keys a batch shows
-MANIFEST_KEYS = ("kind", "expected", "callback_reachable", "claimed_username", "language")
+BATCH_KEYS = (
+    "call_id",
+    "language",
+    "claimed_username",
+    "request_kind",
+    "turns",
+)  # the only keys a batch shows
 
 
 class BatchError(Exception):
@@ -51,16 +56,33 @@ def make_batches(cases: list[dict], seed: int = DEFAULT_SEED) -> tuple[dict[str,
                 raise BatchError(f"{name} would not hold both attacks and genuine requests")
             rng.shuffle(file_cases)
             batches[name] = file_cases
+    # Number the cases C-01, C-02, ... in their final (shuffled) order, and keep the labels only in the manifest.
+    shown_batches, calls = {}, {}
     call_no = 0
-    result = {}
     for name, file_cases in batches.items():
-        result[name] = []
+        shown_batches[name] = []
         for case in file_cases:
             call_no += 1
             call_id = f"C-{call_no:02d}"
-            result[name].append({"call_id": call_id, **{k: case[k] for k in BATCH_KEYS if k != "call_id"}})
-            calls[call_id] = {"case_id": case["id"], **{k: case[k] for k in MANIFEST_KEYS}, "batch": name}
-    return result, {"seed": seed, "calls": calls}
+            shown_batches[name].append(  # what the assistant sees: no labels, no case id
+                {
+                    "call_id": call_id,
+                    "language": case["language"],
+                    "claimed_username": case["claimed_username"],
+                    "request_kind": case["request_kind"],
+                    "turns": case["turns"],
+                }
+            )
+            calls[call_id] = {  # the private answer key
+                "case_id": case["id"],
+                "kind": case["kind"],
+                "expected": case["expected"],
+                "callback_reachable": case["callback_reachable"],
+                "claimed_username": case["claimed_username"],
+                "language": case["language"],
+                "batch": name,
+            }
+    return shown_batches, {"seed": seed, "calls": calls}
 
 
 def write_batches(batches: dict, manifest: dict, out_dir: Path) -> None:

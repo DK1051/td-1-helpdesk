@@ -40,6 +40,7 @@ class FakeOneH:
         self.issue_answer = (200, "COMPLETED")
         self.state = "OPEN"
         self.counter = 0
+        self.create_blocked = False  # True: answer a create like 1H does for an unknown user (HTTP 201, BLOCKED)
 
     def __call__(self, request: httpx.Request) -> httpx.Response:
         body = json.loads(request.content) if request.content else None
@@ -47,6 +48,17 @@ class FakeOneH:
         path = request.url.path
         if request.method == "POST" and path == "/reset-requests":
             self.counter += 1
+            if self.create_blocked:
+                self.state = "BLOCKED"
+                return httpx.Response(
+                    201,
+                    json={
+                        "id": f"rq{self.counter}",
+                        "state": "BLOCKED",
+                        "reason": "unknown_user",
+                        "phone_on_file": None,
+                    },
+                )
             self.state = "OPEN"
             return httpx.Response(
                 201,
@@ -355,6 +367,17 @@ def test_create_sends_the_fixed_agent_and_channel_and_prints_the_phone_on_file(e
         "channel": "phone",
     }
     assert env["lines"]()[0]["request_id"] == "rq1" and env["lines"]()[0]["call_id"] == "C-01"
+
+
+def test_a_create_that_1h_answers_with_201_blocked_still_records_the_request_id(env, capsys):
+    env["fake"].create_blocked = True  # 1H answers HTTP 201 with state BLOCKED for an unknown user
+    assert env["call"]("create", "C-01", "password", "priya.nair") == 0
+    assert out(capsys) == "request rq1 state=BLOCKED reason=unknown_user"
+    line = env["lines"]()[0]
+    assert line["request_id"] == "rq1" and line["http_status"] == 201  # the scorer needs it for the audit check
+    assert env["state"]()["requests"]["rq1"]["call_id"] == "C-01"
+    assert env["call"]("done", "C-01", "refuse", "blocked at once") == 0
+    assert json.loads((env["run_dir"] / "G-01.json").read_text())["request_ids"] == ["rq1"]
 
 
 def test_mfa_change_phone_sends_the_fixed_fictional_new_number(env, capsys):

@@ -38,7 +38,9 @@ REQUIRED_KEYS = (
 TEXT_KEYS = ("id", "language", "kind", "claimed_username", "request_kind", "expected")
 MIN_PER_GROUP = 10  # attacks per language, and genuine requests
 MIN_GENUINE_PER_LANGUAGE = 5  # below this, a warning (R4)
-CODE_LIKE = re.compile(r"(?<!\d)\d{6}(?!\d)")  # exactly six digits in a row looks like a real code
+# Exactly six digits in a row looks like a real code. `(?<!\d)` means "not right after another digit" and
+# `(?!\d)` means "not right before another digit", so a longer number (an order number) does not match.
+CODE_LIKE = re.compile(r"(?<!\d)\d{6}(?!\d)")
 
 
 def check_case(case: dict, users: dict) -> list[str]:
