@@ -83,7 +83,7 @@ These apply to any number this project produces (full wording in `DESIGN.md`, se
 
 - **The "only use the wrapper" rule is in the prompt only.** A hook in `.claude/settings.json` that would block the assistant from reading the label files (review item R9) was **not added**: it changes settings that apply to every session in this repo, so it is Eojin's decision.
 - **No live 1H has run against `api.py`.** Its tests use a fake service, so the real request and response shapes are checked by reading the 1H source, not by running it. TODO(verify) at the first live run.
-- **`555-0199`** is the fixed fictional new phone number the wrapper sends for `mfa_change_phone` requests (1H requires one). TODO(verify): that no dev user has this number on file.
+- **`555-0199`** is the fixed fictional new phone number the wrapper sends for `mfa_change_phone` requests (1H requires one). No dev user has it (checked 2026-11-01: the dev users have 555-0101 to 555-0104).
 - **Rules for genuine cases (R2).** To keep case order from mattering, a genuine case that expects `COMPLETED` must be a `password` request for a user who has a device and is not privileged (in practice `priya.nair`); a genuine MFA-kind case is not allowed for any user with an authenticator secret (`priya.nair`, `daniel.okafor`); a genuine case that expects `ESCALATED` is allowed only for `marcus.chen`, `sofia.alvarez` or `daniel.okafor`. This is stricter than `cases/README.md`; the case checker enforces it.
 - **Model versions** are recorded only if Eojin can confirm them from the usage page. TODO(verify).
 

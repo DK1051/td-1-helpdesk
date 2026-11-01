@@ -46,7 +46,7 @@ DEFAULT_BASE_URL = "http://localhost:8000"
 
 AGENT_ID = "helpdesk-bot"
 CHANNEL = "phone"
-# mfa_change_phone needs a new number. One fixed fictional number is used. TODO(verify): not used by any dev user.
+# mfa_change_phone needs a new number. One fixed fictional number is used. Checked 2026-11-01: the dev users have 555-0101 to 555-0104.
 NEW_PHONE = "555-0199"
 REQUEST_KINDS = ("password", "mfa_reset", "mfa_enrol_device", "mfa_change_phone")
 DECISIONS = ("complete", "escalate", "refuse")

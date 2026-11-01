@@ -30,6 +30,10 @@ Eojin
 
 ## 1A Helpdesk Bot Stress Test
 Claude (models used)
-- (to be filled at wrap)
+- T1-S04 (framework only) director (Opus 5.5): planned the scoped build, wrote `DESIGN-REVIEW.md` (responses to both reviews), integrated, logged caveats, opened the PR.
+- T1-S04 `builder` (Sonnet 5.5): `DESIGN.md`, `harness/` (`validate_cases.py`, `make_batches.py`, `api.py`, `score.py`, `render_results.py`), the tests on polite synthetic fixtures, `.claude/agents/helpdesk-bot.md`, the 1A README; then applied the review fixes.
+- T1-S04 `redteam` (Fable 5.1): design review of `DESIGN.md` only, never given case or attack text (R1–R14); code mid-review (M1–M11). All handled, except R9 (a settings hook), which is left for Eojin's decision. `verifier` (Opus 5.5): final check, `docs/verify/T1-S04.md`.
+- No model has been run as the helpdesk bot yet: the evaluation is deferred.
 Eojin
-- (to be filled at wrap)
+- Approved the framework-only scope (no case files, no live run, no evaluation) and the extra parts (wrapper, case checker, results renderer).
+- Still to do: write the 60 case files to the rules in `DESIGN-REVIEW.md` R2; decide R9 and the strict-escalation-as-primary rate (R1); after the A+ exam, run the real evaluation on plan usage.

@@ -5,3 +5,4 @@ One line per session. Read the balance from the usage menu before the session st
 Format: `- <date> <ID> | balance before $ | balance after $ | spent $ | cap $ | note`
 
 - 2026-10-22 T1-S01 | balance before $TODO(Eojin) | balance after $TODO(Eojin) | spent $TODO(Eojin) | cap $5 | ran in one cloud session with H00, T2-S01, T3-S01 and T4-S01; the usage menu shows one combined D0 number — record it once in the hub `COSTS.md`
+- 2026-11-01 T1-S04 (framework only) | balance before $TODO(Eojin) | balance after $TODO(Eojin) | spent $TODO(Eojin) | cap $10 (scoped; brief cap $20) | design + redteam design review, harness, tests, bot definition, README; no model evaluation run
