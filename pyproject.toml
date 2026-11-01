@@ -1,8 +1,9 @@
 # Test and lint settings for Track 1. Code lives in 1h-verified-reset/ (and later folders);
 # that folder name starts with a digit and has hyphens, so it cannot be a Python package.
 # Adding it to pythonpath lets tests write `from app import ...`.
+# The same goes for 1a-bot-stress-test (the 1A harness): `from harness import score`.
 [tool.pytest.ini_options]
-pythonpath = ["1h-verified-reset"]
+pythonpath = ["1h-verified-reset", "1a-bot-stress-test"]
 markers = [
     "keycloak: needs the local Keycloak dev server with realm maple-harbour (skipped when it is not running)",
 ]
