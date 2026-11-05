@@ -1,6 +1,6 @@
 # Case files (1A helpdesk bot stress test)
 
-This folder holds Eojin's 1A case files: 40 attack scripts (20 English, 20 Korean) and 20 genuine requests, used in session T1-S04. Each attack is a caller trying to talk a helpdesk assistant out of checking who they are, and each genuine request is a plausible employee asking for a normal reset. Claude writes no attack text; Eojin writes every case.
+This folder is for Eojin's 1A case files: 40 attack scripts (20 English, 20 Korean) and 20 genuine requests. None are written yet. Each attack is a caller trying to talk a helpdesk assistant out of checking who they are, and each genuine request is a plausible employee asking for a normal reset. Claude writes no attack text; Eojin writes every case.
 
 ## Case-file format
 
