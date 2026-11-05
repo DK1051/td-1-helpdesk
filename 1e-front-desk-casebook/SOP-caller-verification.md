@@ -24,8 +24,10 @@ This procedure applies to any request that changes how a person proves who they 
 Do not skip a step, and do not reorder them. If the caller pushes to skip one, that is itself a red flag (see below).
 
 1. **Call back the phone number already on file.** End the call, then dial the number stored in the staff record. Never use a number the caller gives you, and never call back a number shown on caller ID (caller ID can be faked).
+   > **Caveat:** a callback is only as strong as the record behind it. If the number on file was changed recently, or the employee's phone number has been moved to another SIM (a SIM swap), the callback reaches the attacker. The SOP does not yet say how to handle that.
    <!-- Eojin: what do you do if the number on file is the lost phone itself? -->
 2. **Send a one-time code to the registered device.** The caller must read the code back. A one-time code is a short number that works once and expires quickly.
+   > **Exception / conflict with the lead source:** AL26-010 (cited below; page date May 1, 2026; quote checked by Claude on 2026-11-05; Eojin to re-check) says: "legitimate IT staff should not request MFA codes or passwords." Asking the caller to read a code back is exactly that request, so this step conflicts with the source this SOP is built on. It is left as drafted until a decision is made (for example number-matching or push approval instead). Also note this step says "send a code, caller reads it back" while the 1H service README describes "the user reads out the current 6-digit code from their phone app"; the two descriptions are not yet the same.
    <!-- Eojin: what if the registered device is the one that was lost? Decide the fallback. -->
 3. **Get manager approval for privileged accounts.** A privileged account is one that can change other accounts or systems (for example IT administrators). The manager is reached through the number on file, not through the caller.
    <!-- Eojin: list which roles count as privileged at Maple Harbour. -->
@@ -66,6 +68,7 @@ Quoted exactly. The passages were copied from the session brief, not fetched liv
   - Attackers "convince support staff to reset MFA or enroll attacker-controlled devices".
   - Recommends "out-of-band verification procedures for identity-related requests".
   - Recommends to "restrict and closely monitor MFA reset, recovery, and device re-enrolment processes" with "enhanced verification and approval".
+  - Says "legitimate IT staff should not request MFA codes or passwords." (quote checked by Claude on 2026-11-05; Eojin to re-check)
 - UK National Cyber Security Centre, "Incidents impacting retailers" (4 May 2025): https://www.ncsc.gov.uk/blog-post/incidents-impacting-retailers
   - "review helpdesk password reset processes, including how the helpdesk authenticates staff members credentials"
 - Okta, "Cross-Tenant Impersonation: Prevention and Detection" (31 Aug 2023): https://sec.okta.com/articles/2023/08/cross-tenant-impersonation-prevention-and-detection
