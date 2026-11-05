@@ -24,8 +24,10 @@ This procedure applies to any request that changes how a person proves who they 
 Do not skip a step, and do not reorder them. If the caller pushes to skip one, that is itself a red flag (see below).
 
 1. **Call back the phone number already on file.** End the call, then dial the number stored in the staff record. Never use a number the caller gives you, and never call back a number shown on caller ID (caller ID can be faked).
+   > **Caveat:** a callback is only as strong as the record behind it. If the number on file was changed recently, or the caller's phone number has been moved to another SIM (a SIM swap), the callback reaches the attacker. The SOP does not yet say how to handle that.
    <!-- Eojin: what do you do if the number on file is the lost phone itself? -->
 2. **Send a one-time code to the registered device.** The caller must read the code back. A one-time code is a short number that works once and expires quickly.
+   > **Exception / conflict with the lead source:** AL26-010 (cited below) is understood to say legitimate IT staff should not request MFA codes from users (not re-checked against the live page). Asking the caller to read a code back is exactly that request, so this step conflicts with the source this SOP is built on. It is left as drafted until a decision is made (for example number-matching or push approval instead). Also note this step says "send a code, caller reads it back" while the 1H service README describes "the user reads out the current 6-digit code from their phone app"; the two descriptions are not yet the same.
    <!-- Eojin: what if the registered device is the one that was lost? Decide the fallback. -->
 3. **Get manager approval for privileged accounts.** A privileged account is one that can change other accounts or systems (for example IT administrators). The manager is reached through the number on file, not through the caller.
    <!-- Eojin: list which roles count as privileged at Maple Harbour. -->
