@@ -18,7 +18,7 @@ Why this attack matters, with the sources, is in the hub: [docs/STORY.md](https:
 
 ## What I do and what Claude does
 
-- **I (Eojin)** planned to solve every ticket, write the knowledge-base articles in both languages, record a short video walking through the SOP, write every attack script and genuine request used in the stress test, and sit two "class" sessions where I explain the code back and answer ten "why" questions per project — graded honestly, transcript published. None of this has been done yet: the tickets are unsolved, no articles exist, no video exists, no scripts were written, and no class sessions have happened.
+- **I (Eojin)** wrote the plan this kit was generated from, made the 1H design choices, and approved the 1H plan and the 1A framework-only scope. Next: solve every ticket, write the knowledge-base articles in both languages, record a short video walking through the SOP, write every attack script and genuine request for the stress test, and sit two "class" sessions where I explain the code back and answer ten "why" questions per project — graded honestly, transcript published.
 - **Claude** scaffolds the casebook, writes the service and its tests, builds the test harness and scorer, and verifies each session's work against written acceptance criteria. The roles and rules are in [CLAUDE.md](CLAUDE.md). Per project, [AI-USE.md](AI-USE.md) lists what Claude did (and which model) and what I did.
 
 ## How to verify my work
