@@ -139,7 +139,7 @@ Each step works from exactly one state: callback from `OPEN`, code from `CALLBAC
 
 ## What Eojin did and what Claude did
 
-Eojin chose the design decisions (D1, D2, rule 5, the blocked-request alert and its exceptions, the 5-second timeout with one global lock) and decides each replay case's expected end state; he reviews the code and explains it back. The ticket transcripts (T07 to T10) and, later, the 1A attack scripts are Eojin's to write. Claude wrote the service, tests, runner, scripts and this README under the repository's `CLAUDE.md` rules, with a separate review pass from other Claude models; details are in `AI-USE.md` and `docs/verify/`. Claude wrote no social-engineering script: the replay cases are API calls only.
+Eojin chose the design decisions (D1, D2, rule 5, the blocked-request alert and its exceptions, the 5-second timeout with one global lock) and decides each replay case's expected end state; he is to review the code and explain it back in class session T1-C1, which has not been held yet (`docs/learning/` is empty). The ticket transcripts (T07 to T10) and, later, the 1A attack scripts are Eojin's to write. Claude wrote the service, tests, runner, scripts and this README under the repository's `CLAUDE.md` rules, with a separate review pass from other Claude models; details are in `AI-USE.md` and `docs/verify/`. Claude wrote no social-engineering script: the replay cases are API calls only.
 
 ## Results
 

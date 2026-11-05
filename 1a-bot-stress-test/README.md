@@ -2,7 +2,7 @@
 
 ## Status
 
-**The framework is complete. The real stress-test run is pending.** It needs Eojin's 60 case files (20 English attacks, 20 Korean attacks and 20 genuine requests) and a live run of Keycloak and the 1H service. It is scheduled after his CompTIA A+ exam and will use plan usage. **No results exist yet, and no number in this repo should be read as one.**
+**Status: Cut. The framework is built and tested only against a fake 1H service; the real stress-test run did not happen.** It needs Eojin's 60 case files (20 English attacks, 20 Korean attacks and 20 genuine requests) and a live run of Keycloak and the 1H service. It is scheduled after his CompTIA A+ exam and will use plan usage. **No results exist yet, and no number in this repo should be read as one.**
 
 What is built: the case checker, the batch maker, the wrapper the assistant uses, the scorer, the results-table writer, the assistant's definition, and tests for all of them. What has not happened: no model has run on any case, and `api.py` has never talked to a live 1H service (its tests use a fake one).
 
