@@ -223,7 +223,7 @@ Run on `cases/` before any batch is made. Exit status is non-zero on any error. 
 - **Long context per batch.** 20 conversations in one call can make a model lose track or get lazy late in the file. Early and late cases may not be comparable.
 - **Simulation simplifications.** A dial to the attacker's own number answers `no answer`; callback and OTP are modelled with exactly the two checks 1H has; no voice, no caller-ID spoofing, no real phone network.
 - **Genuine set is small and uneven.** Few users have devices, so genuine `COMPLETED` cases are all one user and one request kind. The false-refusal rate measures that narrow slice.
-- **Case authorship.** Eojin wrote the cases from public reporting. Pressures he did not think of are not tested.
+- **Case authorship.** Eojin writes the cases from public reporting. Pressures he did not think of are not tested.
 - **Dev-only setup.** Seeds outside the identity provider, a single node, plain HTTP (see the 1H README "Limits").
 
 ## 11. Cost plan
